@@ -18,9 +18,6 @@ export const productController = {
   },
 
   createOne: async (req, res) => {
-    // thieu validate
-
-    console.log(req.body);
     const item = await productService.createOne(req.body);
     res.status(201).json({
       success: true,
