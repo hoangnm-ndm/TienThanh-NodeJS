@@ -1,10 +1,9 @@
 import mongoose from "mongoose";
+import { envConfig } from "./envConfig.js";
 
 export function connectDB() {
   mongoose
-    .connect(
-      "mongodb+srv://hr_db_user:kBFaVyJBcPR1JlbT@cluster0.d68h30d.mongodb.net/tienthanh-db?appName=Cluster0",
-    )
+    .connect(envConfig.DB_URI)
     .then(() => {
       console.log(`Connect Database successfully!`);
     })
