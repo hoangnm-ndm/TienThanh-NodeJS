@@ -1,6 +1,6 @@
 # TienThanh
 
-Monorepo học tập gồm REST API **Node.js + Express 5 + MongoDB** (xác thực JWT bằng cookie httpOnly, session theo thiết bị) và frontend **React + Vite**.
+Monorepo học tập gồm REST API **Node.js + Express 5 + MongoDB** (xác thực JWT bằng cookie httpOnly, session theo thiết bị, phân quyền động theo role / permission) và frontend **React + Vite**.
 
 ```text
 TienThanh/
@@ -19,6 +19,7 @@ Yêu cầu: Node.js ≥ 22, MongoDB (Atlas hoặc local).
 nvm use                 # Node theo .nvmrc (tuỳ chọn)
 npm run setup           # cài dependency + tạo backend/.env, frontend/.env
 # điền DB_URI, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET vào backend/.env
+npm run db:seed         # role hệ thống (+ superAdmin nếu điền SEED_SUPER_ADMIN_*)
 npm run dev             # backend :8000 + frontend :5173
 ```
 
@@ -33,7 +34,7 @@ Mở http://localhost:5173. API gọi qua `/api/...`.
 | `npm run build` | Build frontend |
 | `npm run lint` | Lint các workspace |
 | `npm run env:sync` | Đồng bộ biến từ `.env.example` sang `.env` |
-| `npm run db:seed` | Seed dữ liệu ban đầu (superAdmin từ env) |
+| `npm run db:seed` | Seed role hệ thống, migration role cũ, superAdmin từ env |
 
 Danh sách lệnh và biến môi trường đầy đủ: [docs/01-chay-local.md](docs/01-chay-local.md).
 

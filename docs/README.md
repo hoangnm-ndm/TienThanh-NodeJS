@@ -16,7 +16,7 @@ flowchart LR
 | [02-kien-truc.md](02-kien-truc.md) | Cần hiểu FE / BE / DB nối với nhau ra sao, muốn biết "sửa X ở đâu" |
 | [03-quy-uoc-code.md](03-quy-uoc-code.md) | Trước khi thêm module / route / schema mới |
 | [04-xac-thuc.md](04-xac-thuc.md) | Làm việc với đăng nhập, cookie, token, phân quyền |
-| [05-nguoi-dung.md](05-nguoi-dung.md) | Đổi role, khoá / mở khoá user, seed superAdmin |
+| [05-nguoi-dung.md](05-nguoi-dung.md) | Role, permission, gán role, khoá / mở khoá user, seed |
 | [06-san-pham.md](06-san-pham.md) | Làm việc với API sản phẩm |
 | [07-quyet-dinh/](07-quyet-dinh/README.md) | Muốn biết vì sao chọn cấu trúc / công nghệ hiện tại |
 

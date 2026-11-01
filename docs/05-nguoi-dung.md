@@ -1,90 +1,200 @@
 # 05 — Người dùng & phân quyền
 
-Dùng khi làm việc với role, khoá / mở khoá tài khoản, hoặc seed superAdmin. Trước: [04 — Xác thực](04-xac-thuc.md) · Tiếp: [06 — Sản phẩm](06-san-pham.md)
+Dùng khi làm việc với role, permission, gán role cho user, khoá / mở khoá tài khoản, hoặc chạy seed. Trước: [04 — Xác thực](04-xac-thuc.md) · Tiếp: [06 — Sản phẩm](06-san-pham.md)
 
-Code: `backend/src/modules/user/`, `backend/src/shared/constants/roles.js`, `backend/src/seeds/`. Lý do thiết kế: [ADR-003](07-quyet-dinh/ADR-003-phan-quyen-role-va-superadmin-duy-nhat.md).
+Code:
+- `backend/src/modules/role/`, `backend/src/modules/user/`
+- `backend/src/shared/constants/{permissions,roles}.js`
+- `backend/src/shared/utils/accessControl.js`, `backend/src/shared/middlewares/authorize.js`
+- `backend/src/seeds/`
 
-## Role và cấp bậc
+Lý do thiết kế: [ADR-004](07-quyet-dinh/ADR-004-phan-quyen-dong-rbac.md). ADR-004 thay [ADR-003](07-quyet-dinh/ADR-003-phan-quyen-role-va-superadmin-duy-nhat.md).
 
-| Role | Cấp (`ROLE_LEVEL`) | Có được |
+## Mô hình
+
+```mermaid
+erDiagram
+  User }o--o{ Role : "roles[] (nhiều role)"
+  User {
+    ObjectId[] roles
+    boolean isSuperAdmin "tối đa 1 user = true"
+    date isBlocked
+  }
+  Role {
+    string name "slug, unique (vd content-editor)"
+    string description
+    string[] permissions "chỉ giá trị trong PERMISSIONS"
+    number level "1–1000, cao hơn = cấp cao hơn"
+    boolean isSystem "admin, member: không đổi tên / xoá"
+  }
+```
+
+| Khái niệm | Ở đâu | Đổi được qua API? |
 | --- | --- | --- |
-| `superAdmin` | 3 | Đổi role (member ↔ admin) của người khác; khoá / mở khoá admin và member |
-| `admin` | 2 | Khoá / mở khoá member |
-| `member` | 1 | Không có quyền quản lý user. Đây là role mặc định khi đăng ký |
+| **Permission** | Danh mục cố định trong `backend/src/shared/constants/permissions.js` | Không. Thêm permission là sửa code |
+| **Role** | Collection `roles` | Có: CRUD, thêm / bớt permission, đổi level |
+| **Role của user** | `User.roles[]` | Có: `PUT /api/users/:id/roles` |
+| **superAdmin** | Cờ `User.isSuperAdmin` | Không. Chỉ tạo bằng seed |
 
-Luật chung, áp cho mọi thao tác:
+- **Quyền thực tế** của user = hợp permission của mọi role họ có.
+- **Cấp (level)** của user = `level` cao nhất trong các role của họ; không có role thì cấp 0.
+- superAdmin bỏ qua mọi kiểm tra permission, có cấp vô hạn, và không ai tác động lên được.
+- `authenticate` đọc role từ DB ở mỗi request. Vì vậy đổi permission của role, gán / gỡ role, hay khoá user đều **có hiệu lực ngay ở request tiếp theo**.
 
-1. **Không ai tự thao tác lên chính mình** → `403 CANNOT_MODIFY_SELF`.
-2. **Chỉ tác động lên người có cấp thấp hơn hẳn** → `403 TARGET_ROLE_NOT_ALLOWED`. Admin không khoá được admin khác. superAdmin là cấp cao nhất nên không ai khoá được.
-3. **Chỉ có đúng 1 superAdmin.** API không cho gán role `superAdmin`. MongoDB còn có unique index riêng phần (`role_1`, chỉ áp cho document `role: "superAdmin"`), nên ghi superAdmin thứ hai từ bất kỳ đâu (code, mongosh) đều bị lỗi `E11000`.
+Permission hiện có:
 
-Đổi role / khoá có hiệu lực **ngay ở request tiếp theo** của người bị tác động, vì `authenticate` đọc role và trạng thái khoá từ DB ([04 — Bảo vệ route](04-xac-thuc.md#bảo-vệ-route)).
+| Permission | Cho phép |
+| --- | --- |
+| `user:block` | Khoá / mở khoá người dùng |
+| `user:assign-role` | Gán role cho người dùng |
+| `role:read` | Xem role và danh mục permission |
+| `role:create` | Tạo role |
+| `role:update` | Sửa role, thêm / bớt permission |
+| `role:delete` | Xoá role |
+
+Role hệ thống (tạo bởi `npm run db:seed`):
+
+| Role | Level | Permission ban đầu |
+| --- | --- | --- |
+| `admin` | 50 | Toàn bộ permission ở bảng trên |
+| `member` | 1 | Không có. Role mặc định khi đăng ký |
+
+Permission của role hệ thống chỉnh được qua API sau khi seed. Seed không ghi đè lại.
+
+## Luật chống leo thang đặc quyền
+
+Áp cho mọi thao tác. Kiểm tra nằm ở `accessControl.js`, `role.service.js`, `user.service.js`.
+
+1. **Không tự tác động lên chính mình**, gồm gán role, khoá, mở khoá → `403 CANNOT_MODIFY_SELF`.
+2. **Chỉ tác động lên user cấp thấp hơn hẳn** (cùng cấp cũng không được) → `403 TARGET_ROLE_NOT_ALLOWED`.
+3. **Chỉ tạo / sửa / xoá / gán role có level thấp hơn hẳn cấp của mình.** Không được đặt level mới ≥ cấp của mình → `403 ROLE_LEVEL_NOT_ALLOWED`.
+4. **Chỉ cấp permission mà mình đang có** → `403 PERMISSION_NOT_GRANTABLE`. Luật này áp cho:
+   - permission khi tạo role;
+   - permission **thêm mới** khi sửa role (bớt permission thì luôn được, kể cả permission mình không có);
+   - permission của các role **mới gán thêm** cho user.
+5. Role hệ thống không đổi tên được, không xoá được → `403 SYSTEM_ROLE_PROTECTED`.
+6. Role đang được gán cho user thì không xoá được → `409 ROLE_IN_USE`. Phải gỡ role khỏi các user đó trước.
+
+Ví dụ: admin (level 50) tạo role `editor` level 10 có `user:block`, rồi gán cho member. Người đó giờ có cấp 10: khoá được user cấp 1, nhưng không khoá được admin. Nếu superAdmin bỏ `role:delete` khỏi role admin, admin không cấp `role:delete` cho ai được nữa.
 
 ## API
 
-Base: `/api/users`. Mọi route đều qua `authenticate` (chưa đăng nhập → `401`). Format response và lỗi chung: [03 — Lỗi và response](03-quy-uoc-code.md#lỗi-và-response).
+Mọi route đều qua `authenticate` (chưa đăng nhập → `401`). Thiếu permission → `403 FORBIDDEN`. Format response và lỗi chung: [03 — Lỗi và response](03-quy-uoc-code.md#lỗi-và-response).
 
-| Method · Path | Role được gọi | Input | Thành công |
+**Role** — `/api/roles`, `/api/permissions`:
+
+| Method · Path | Permission | Input | Thành công |
 | --- | --- | --- | --- |
-| `PATCH /:id/role` | `superAdmin` | `{ "role": "admin" \| "member" }` | `200`, `data` = user |
-| `PATCH /:id/block` | `admin`, `superAdmin` | — | `200`, `data` = user (`isBlocked: true`) |
-| `PATCH /:id/unblock` | `admin`, `superAdmin` | — | `200`, `data` = user (`isBlocked: false`) |
+| `GET /api/permissions` | `role:read` | — | `200`, `data` = `[{ key, group, description }]` |
+| `GET /api/roles` | `role:read` | — | `200`, danh sách role (level giảm dần) kèm `userCount` |
+| `GET /api/roles/:id` | `role:read` | — | `200`, role kèm `userCount` |
+| `POST /api/roles` | `role:create` | `{ name, level, description?, permissions? }` | `201`, role |
+| `PATCH /api/roles/:id` | `role:update` | Ít nhất 1 trong `name`, `description`, `level`, `permissions` | `200`, role |
+| `DELETE /api/roles/:id` | `role:delete` | — | `200` |
 
-- `:id` phải là ObjectId 24 ký tự hex → nếu sai: `400 VALIDATION_ERROR` (`params.id`).
-- Body `role` dùng `.strict()`; `superAdmin` hay giá trị khác → `400` "Role chỉ được là: admin, member".
-- **Idempotent**: khoá tài khoản đã khoá, mở khoá tài khoản đang mở, hoặc đặt role trùng role hiện tại → vẫn `200`, `message` cho biết không thay đổi.
-- `data` user: `{ id, email, role, language, isVerify, isBlocked, blockedAt, createdAt }`.
+Rule validate (`role.schema.js`, `.strict()`):
+
+| Field | Rule |
+| --- | --- |
+| `name` | 2–50 ký tự, chỉ chữ thường, số, dấu `-` (tự trim và lowercase) |
+| `level` | Số nguyên 1–1000 |
+| `description` | ≤ 200 ký tự |
+| `permissions` | Mảng giá trị trong danh mục, tự loại trùng. **Gửi permissions = thay toàn bộ danh sách** |
+
+`data` role: `{ id, name, description, level, permissions, isSystem, userCount, createdAt, updatedAt }`.
+
+**User** — `/api/users`:
+
+| Method · Path | Permission | Input | Thành công |
+| --- | --- | --- | --- |
+| `PUT /:id/roles` | `user:assign-role` | `{ "roleIds": ["<id>", …] }` (thay toàn bộ, tối đa 20, `[]` = gỡ hết) | `200`, user |
+| `PATCH /:id/block` | `user:block` | — | `200`, user (`isBlocked: true`) |
+| `PATCH /:id/unblock` | `user:block` | — | `200`, user (`isBlocked: false`) |
+
+- Thao tác không đổi gì (khoá người đã khoá, gán đúng bộ role hiện tại) vẫn trả `200`, `message` cho biết không thay đổi.
+- Khi **khoá**, mọi session của người bị khoá bị thu hồi: thiết bị của họ nhận `403 ACCOUNT_BLOCKED`, refresh trả `401`. Sau khi mở khoá, họ phải đăng nhập lại.
+
+Lỗi riêng ngoài các luật ở trên:
 
 | Lỗi | Khi nào |
 | --- | --- |
-| `401 UNAUTHORIZED` / `TOKEN_*` | Chưa đăng nhập, token sai / hết hạn |
-| `403 FORBIDDEN` | Role người gọi không nằm trong cột "Role được gọi" |
-| `403 CANNOT_MODIFY_SELF` | `:id` là chính người gọi |
-| `403 TARGET_ROLE_NOT_ALLOWED` | Người bị tác động không có cấp thấp hơn người gọi |
-| `404 USER_NOT_FOUND` | Không có user với `:id` |
-| `409 DUPLICATE_KEY` | Role của người bị tác động vừa thay đổi giữa lúc kiểm tra và lúc ghi (hiếm). Gọi lại |
+| `400 VALIDATION_ERROR` | `:id` / `roleIds` không phải ObjectId, body sai rule |
+| `404 USER_NOT_FOUND` / `ROLE_NOT_FOUND` | Không có user / role (với `roleIds`, message liệt kê id không tồn tại) |
+| `409 ROLE_NAME_EXISTS` | Trùng tên role |
+| `409 DUPLICATE_KEY` | Dữ liệu vừa bị người khác đổi giữa lúc kiểm tra và lúc ghi (hiếm). Gọi lại |
 
-Khi **khoá**: mọi session của người bị khoá bị thu hồi (`sessionService.revokeAllByUser`). Mọi thiết bị của họ lập tức nhận `403 ACCOUNT_BLOCKED`, và refresh trả `401`. Sau khi **mở khoá**, người đó phải đăng nhập lại.
+`/api/auth/me` (và response đăng nhập) trả thêm:
+- `permissions`: danh sách quyền thực tế;
+- `level`: cấp của user, `null` nếu là superAdmin.
 
-Thử nhanh (đã đăng nhập superAdmin, cookie lưu trong `jar`):
+Frontend dùng hai field này để ẩn / hiện chức năng. Server vẫn kiểm tra quyền ở mọi request.
+
+Thử nhanh (đã đăng nhập, cookie lưu trong `jar`):
 
 ```bash
-curl -i -X PATCH -b jar -H "Content-Type: application/json" \
-  -d '{"role":"admin"}' http://localhost:8000/api/users/<id-user>/role
-curl -i -X PATCH -b jar http://localhost:8000/api/users/<id-user>/block
-curl -i -X PATCH -b jar http://localhost:8000/api/users/<id-user>/unblock
+curl -i -b jar -H "Content-Type: application/json" \
+  -d '{"name":"editor","level":10,"permissions":["user:block"]}' http://localhost:8000/api/roles
+curl -i -X PUT -b jar -H "Content-Type: application/json" \
+  -d '{"roleIds":["<id-member>","<id-editor>"]}' http://localhost:8000/api/users/<id-user>/roles
 ```
 
-## Tạo superAdmin đầu tiên (seed)
+## Bảo vệ route bằng permission
 
-Đăng ký luôn tạo `member`, nên superAdmin phải được tạo bằng seed.
+```js
+import { authorize } from "../../shared/middlewares/authorize.js";
+import { PERMISSIONS } from "../../shared/constants/permissions.js";
 
-1. **Điền** `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD` vào `backend/.env` ([bảng biến](01-chay-local.md#biến-môi-trường)). Mật khẩu theo cùng rule như khi đăng ký.
-2. **Chạy** ở gốc repo:
+router.patch("/:id/block", authenticate, authorize(PERMISSIONS.USER_BLOCK), controller.block);
+```
 
-   ```bash
-   npm run db:seed
-   ```
+- `authorize(...permissions)`: đặt sau `authenticate`. Truyền nhiều permission thì phải có **đủ tất cả**. superAdmin luôn qua.
+- Thêm permission mới:
+  1. Khai báo trong `PERMISSIONS` và `PERMISSION_CATALOG` (`backend/src/shared/constants/permissions.js`).
+  2. Dùng `authorize(...)` ở route.
+  3. Cấp permission cho role cần dùng qua `PATCH /api/roles/:id`.
+  4. Cập nhật bảng permission ở trên.
+- Luật theo cấp bậc (user / role thấp hơn) nằm trong service, dùng `assertLevelBelow` và `assertCanGrant` từ `accessControl.js`. `authorize` chỉ kiểm tra có permission hay không.
 
-3. **Kết quả mong đợi**: một trong các dòng sau.
+## Seed: role hệ thống, migration, superAdmin
+
+`npm run db:seed` (chạy ở gốc repo) gồm 3 bước, chạy theo thứ tự:
+
+| Bước | Việc làm | Log khi đã chạy rồi |
+| --- | --- | --- |
+| `systemRoles` | Tạo role `admin`, `member` nếu chưa có. Không ghi đè permission / level đã chỉnh | `Role hệ thống đã đủ, không thay đổi` |
+| `migrateLegacyRoles` | Chuyển dữ liệu cũ `role: "superAdmin" \| "admin" \| "member"` sang `isSuperAdmin` / `roles[]`, xoá field `role`, bỏ index cũ `role_1` | `Không có dữ liệu role cũ` |
+| `superAdmin` | Tạo / nâng superAdmin từ `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD` | `superAdmin <email> đã tồn tại, không thay đổi` |
+
+**Phải chạy `npm run db:seed` trước khi dùng API**, cả với DB mới lẫn DB có dữ liệu cũ:
+- Chưa có role `member` thì đăng ký trả `500` "Hệ thống chưa khởi tạo role mặc định".
+- User dữ liệu cũ chưa migration thì không có quyền gì.
+
+Các bước chạy seed superAdmin:
+
+1. **Điền** `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD` vào `backend/.env` ([bảng biến](01-chay-local.md#biến-môi-trường)). Mật khẩu theo cùng rule như khi đăng ký. Để trống email thì bỏ qua bước superAdmin.
+2. **Chạy** `npm run db:seed`.
+3. **Kết quả mong đợi**: một trong các dòng log sau.
 
    | Dòng log | Ý nghĩa |
    | --- | --- |
-   | `[seed:superAdmin] Đã tạo superAdmin <email>` | Tạo user mới với role superAdmin |
-   | `[seed:superAdmin] Đã nâng <email> lên superAdmin (giữ nguyên mật khẩu)` | Email đã đăng ký từ trước, được nâng role |
+   | `[seed:superAdmin] Đã tạo superAdmin <email>` | Tạo user mới với cờ superAdmin |
+   | `[seed:superAdmin] Đã nâng <email> lên superAdmin (giữ nguyên mật khẩu)` | Email đã đăng ký từ trước, được nâng lên |
    | `[seed:superAdmin] superAdmin <email> đã tồn tại, không thay đổi` | Chạy lại, không làm gì |
    | `[seed:superAdmin] Bỏ qua: hệ thống đã có superAdmin khác (<email>)` | DB đã có superAdmin, seed không tạo thêm |
-   | `[seed:superAdmin] Bỏ qua: chưa điền SEED_SUPER_ADMIN_EMAIL` | Không seed superAdmin |
 
-4. **Kiểm tra**: đăng nhập bằng email đó → `GET /api/auth/me` trả `"role":"superAdmin"`.
-5. **Nếu sai**: `[seed] Thất bại: …` và exit code 1. Đọc thông báo: mật khẩu không đạt rule, hoặc email chưa có user mà thiếu mật khẩu.
+4. **Kiểm tra**: đăng nhập bằng email đó → `GET /api/auth/me` trả `"isSuperAdmin": true`.
+5. **Nếu sai**: `[seed] Thất bại: …` và exit code 1. Đọc thông báo: mật khẩu không đạt rule, email chưa có user mà thiếu mật khẩu, hoặc `E11000` khi dữ liệu cũ có hơn 1 superAdmin.
 
-Seed **idempotent**, chạy lại bao nhiêu lần cũng được. Muốn đổi người giữ superAdmin thì hiện phải sửa tay trong DB: hạ superAdmin cũ trước, sau đó mới nâng người mới, vì unique index chặn trạng thái có 2 superAdmin. Chưa có API chuyển giao quyền.
+Mọi bước seed đều **idempotent**, chạy lại bao nhiêu lần cũng được.
 
-Thêm seeder mới: tạo `backend/src/seeds/<tên>.seed.js` export một hàm `async` trả về chuỗi log, rồi thêm vào mảng `SEEDERS` trong `backend/src/seeds/index.js` theo thứ tự phụ thuộc. Seeder phải idempotent.
+Thêm seeder mới:
+1. Tạo `backend/src/seeds/<tên>.seed.js` export một hàm `async` trả về chuỗi log.
+2. Thêm vào mảng `SEEDERS` trong `backend/src/seeds/index.js` theo thứ tự phụ thuộc.
 
 ## Edge case & giới hạn
 
-- DB có sẵn **hơn 1 superAdmin** (dữ liệu cũ, sửa tay) → Mongoose không tạo được unique index `role_1` khi khởi động, nên lớp chặn ở DB không có hiệu lực. Kiểm tra bằng `db.users.countDocuments({ role: "superAdmin" })`, hạ bớt về 1, rồi khởi động lại.
-- Chưa có API: danh sách user, xem chi tiết user, chuyển giao superAdmin, lịch sử ai khoá ai (audit log).
-- Chưa có test tự động. Các luồng trên đã kiểm tra thủ công bằng curl ngày 2026-11-01.
+- **Dữ liệu cũ có hơn 1 superAdmin**: migration dừng với lỗi `E11000` vì unique index trên `isSuperAdmin` chặn. Kiểm tra bằng `db.users.countDocuments({ role: "superAdmin" })`, hạ bớt về 1, rồi chạy lại seed.
+- **Đổi người giữ superAdmin**: hiện phải sửa tay trong DB, theo thứ tự đặt `isSuperAdmin: false` cho người cũ rồi mới đặt `true` cho người mới. Chưa có API chuyển giao.
+- **Chi phí mỗi request**: `authenticate` populate role nên tốn thêm 1 query. Chưa có cache.
+- **Chưa có**: API danh sách / chi tiết user, chuyển giao superAdmin, audit log (ai cấp quyền / khoá ai), quyền theo dữ liệu (vd "chỉ sửa bài của mình").
+- Chưa có test tự động. Các luồng trên (gồm migration từ dữ liệu cũ) đã kiểm tra thủ công bằng curl và mongosh ngày 2026-11-01.

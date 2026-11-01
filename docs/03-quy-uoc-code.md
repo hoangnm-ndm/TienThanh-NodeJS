@@ -13,7 +13,7 @@ Dùng trước khi thêm module, route, schema hay lỗi mới. Các quy ước 
 
 | Tầng | Được làm | Không làm |
 | --- | --- | --- |
-| `*.route.js` | Khai báo method + path, gắn `validate`, `authenticate`, `checkRole` | Logic |
+| `*.route.js` | Khai báo method + path, gắn `validate`, `authenticate`, `authorize` | Logic |
 | `*.controller.js` | Lấy input đã validate (`req.validated.*`), gọi service, set cookie, trả `sendSuccess` | Query DB, business rule |
 | `*.service.js` | Business logic, gọi model, `throw httpErrors.*` | Đụng `req` / `res` |
 | `*.model.js` | Mongoose schema, index | Logic nghiệp vụ |
@@ -41,7 +41,7 @@ if (userExist) return res.status(400).json({ success: false, message: "..." });
 
 - Schema zod đặt trong `<module>.schema.js`, gắn bằng `validate({ params, query, body, cookies })` (`backend/src/shared/middlewares/validate.js`).
 - Controller đọc dữ liệu **đã parse** ở `req.validated.<phần>` (đã trim, lowercase, coerce), không đọc `req.body` thô.
-- Body nhận từ client dùng `.strict()` để từ chối field lạ, ví dụ client tự gửi `role`.
+- Body nhận từ client dùng `.strict()` để từ chối field lạ, ví dụ client tự gửi `roles`, `isSuperAdmin`.
 - Thông báo lỗi viết trong schema, tiếng Việt: `z.string().min(6, "Password tối thiểu 6 ký tự")`.
 - Lỗi validate → `400 VALIDATION_ERROR`, `details[].field` có tiền tố phần request: `body.email`, `cookies.refreshToken`.
 

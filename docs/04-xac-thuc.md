@@ -2,7 +2,7 @@
 
 Dùng khi làm việc với đăng ký, đăng nhập, token, cookie, phân quyền. Trước: [03 — Quy ước code](03-quy-uoc-code.md) · Tiếp: [05 — Người dùng & phân quyền](05-nguoi-dung.md)
 
-Code: `backend/src/modules/auth/`, `backend/src/modules/session/`, `backend/src/shared/middlewares/{authenticate,checkRole}.js`, `backend/src/shared/utils/{jwt,hash,authCookies}.js`. Lý do chọn thiết kế: [ADR-002](07-quyet-dinh/ADR-002-cookie-auth-session-rotation.md).
+Code: `backend/src/modules/auth/`, `backend/src/modules/session/`, `backend/src/shared/middlewares/{authenticate,authorize}.js`, `backend/src/shared/utils/{jwt,hash,authCookies}.js`. Lý do chọn thiết kế: [ADR-002](07-quyet-dinh/ADR-002-cookie-auth-session-rotation.md).
 
 ## Mô hình dữ liệu
 
@@ -12,7 +12,8 @@ erDiagram
   User {
     string email "unique, lowercase"
     string password "bcrypt, select:false"
-    string role "superAdmin | admin | member"
+    ObjectId[] roles "nhiều role — xem 05"
+    boolean isSuperAdmin
     string language "en | vi | jp"
     boolean isVerify
     date isBlocked "null = đang hoạt động"
@@ -28,7 +29,7 @@ erDiagram
   }
 ```
 
-- **Access token** (JWT, `JWT_ACCESS_SECRET`): payload `{ sub: userId, role }`, hạn `JWT_ACCESS_EXPIRES_IN` (mặc định 15m). Không lưu DB.
+- **Access token** (JWT, `JWT_ACCESS_SECRET`): payload `{ sub: userId }` (không chứa role / permission), hạn `JWT_ACCESS_EXPIRES_IN` (mặc định 15m). Không lưu DB.
 - **Refresh token** (JWT, `JWT_REFRESH_SECRET`): payload `{ sub: userId, sid: sessionId, jti }`, hạn `JWT_REFRESH_EXPIRES_IN` (mặc định 7d). DB chỉ lưu hash.
 - Mỗi lần đăng nhập tạo **1 Session**, tương ứng một thiết bị. Mỗi lần refresh, `tokenHash` đổi, `_id` session giữ nguyên.
 
@@ -81,7 +82,7 @@ Base: `/api/auth`. Body JSON. Format response và lỗi chung: [03 — Lỗi và
 | `POST /logout` | — | cookie `refreshToken` (không bắt buộc) | `200`, xoá 2 cookie | — (idempotent) |
 | `GET /me` | `authenticate` | cookie `accessToken` hoặc `Authorization: Bearer` | `200`, `data` = user | `401`, `403 ACCOUNT_BLOCKED` |
 
-`data` user: `{ id, email, role, language, isVerify, isBlocked, blockedAt, createdAt }` (mapper chung `backend/src/modules/user/user.mapper.js`).
+`data` user: `{ id, email, roles: [{ id, name, level }], isSuperAdmin, language, isVerify, isBlocked, blockedAt, createdAt }`; `/login` và `/me` có thêm `level`, `permissions` (mapper chung `backend/src/modules/user/user.mapper.js`).
 
 Rule validate (`auth.schema.js`):
 
@@ -105,14 +106,15 @@ curl -i -X POST -b jar -c jar http://localhost:8000/api/auth/logout
 
 ```js
 import { authenticate } from "../../shared/middlewares/authenticate.js";
-import { checkRole, ROLES } from "../../shared/middlewares/checkRole.js";
+import { authorize } from "../../shared/middlewares/authorize.js";
+import { PERMISSIONS } from "../../shared/constants/permissions.js";
 
-router.post("/", authenticate, checkRole(ROLES.ADMIN, ROLES.SUPER_ADMIN), validate({ body: schema }), controller.createOne);
+router.patch("/:id/block", authenticate, authorize(PERMISSIONS.USER_BLOCK), validate({ params: schema }), controller.block);
 ```
 
-- `authenticate`: đọc token từ cookie `accessToken` trước, không có thì đọc header `Authorization: Bearer <token>` (Postman, mobile). Sau khi verify, truy vấn DB lấy `role` và `isBlocked` mới nhất, rồi gắn `req.user = { id, email, role }`.
-- `checkRole(...roles)`: luôn đặt **sau** `authenticate`. Không có `req.user` → `401`. Role không nằm trong danh sách → `403 FORBIDDEN`.
-- Đổi role hoặc khoá user có hiệu lực ngay ở request tiếp theo, vì `authenticate` đọc từ DB chứ không đọc role trong token.
+- `authenticate`: đọc token từ cookie `accessToken` trước, không có thì đọc header `Authorization: Bearer <token>` (Postman, mobile). Sau khi verify, truy vấn DB lấy role (populate), `isSuperAdmin`, `isBlocked` mới nhất, rồi gắn `req.user = { id, email, access }`. `access` = `{ isSuperAdmin, roles, level, permissions }`.
+- `authorize(...permissions)`: luôn đặt **sau** `authenticate`. Không có `req.user` → `401`. Thiếu permission → `403 FORBIDDEN`. Chi tiết permission, role, luật cấp bậc: [05 — Người dùng & phân quyền](05-nguoi-dung.md#bảo-vệ-route-bằng-permission).
+- Đổi role / permission hoặc khoá user có hiệu lực ngay ở request tiếp theo, vì `authenticate` đọc từ DB chứ không đọc từ token.
 
 ## Edge case & giới hạn
 

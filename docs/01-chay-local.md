@@ -48,7 +48,20 @@ brew services start mongodb-community   # hoặc: mongod --dbpath <thư-mục-da
 # backend/.env → DB_URI=mongodb://127.0.0.1:27017/tienthanh-dev
 ```
 
-### 3. Chạy dev
+### 3. Seed dữ liệu ban đầu
+
+```bash
+npm run db:seed
+```
+
+- **Làm gì**: tạo role hệ thống `admin`, `member`; chuyển dữ liệu role cũ (nếu có); tạo superAdmin nếu đã điền `SEED_SUPER_ADMIN_*`.
+- **Kết quả mong đợi**: các dòng `[seed:systemRoles] …`, `[seed:migrateLegacyRoles] …`, `[seed:superAdmin] …`, exit code 0.
+- **Vì sao phải làm trước bước 4**: đăng ký cần role `member`. Thiếu role này thì `POST /api/auth/register` trả `500`.
+- **Nếu sai**: `[seed] Thất bại: …` → xem [05 — Seed](05-nguoi-dung.md#seed-role-hệ-thống-migration-superadmin).
+
+Chạy lại mỗi khi pull code có seeder / migration mới. Seed idempotent nên chạy lại không sao.
+
+### 4. Chạy dev
 
 ```bash
 npm run dev
@@ -76,7 +89,7 @@ npm run dev
 | `npm run dev:backend` | Chỉ backend (`node --watch`, tự restart khi sửa file) |
 | `npm run dev:frontend` | Chỉ frontend (Vite) |
 | `npm start` | Chạy backend không watch |
-| `npm run db:seed` | Seed dữ liệu ban đầu (superAdmin) — [05 — Seed](05-nguoi-dung.md#tạo-superadmin-đầu-tiên-seed) |
+| `npm run db:seed` | Seed role hệ thống, chuyển dữ liệu role cũ, tạo superAdmin — [05 — Seed](05-nguoi-dung.md#seed-role-hệ-thống-migration-superadmin) |
 | `npm run build` | Build frontend ra `frontend/dist/` |
 | `npm run preview` | Xem bản build frontend |
 | `npm run lint` | Lint mọi workspace có script `lint` (hiện chỉ frontend — oxlint) |
@@ -103,7 +116,7 @@ Nguồn duy nhất của danh sách biến là `backend/.env.example` và `front
 | `JWT_REFRESH_SECRET` | ✔ | — | Secret ký refresh token, khác access secret |
 | `JWT_REFRESH_EXPIRES_IN` | | `7d` | Hạn refresh token = hạn session |
 | `COOKIE_DOMAIN` | | domain hiện tại | Domain gắn cho cookie auth |
-| `SEED_SUPER_ADMIN_EMAIL` | | — (trống = bỏ qua) | Email superAdmin cho `npm run db:seed` |
+| `SEED_SUPER_ADMIN_EMAIL` | | — (trống = bỏ qua) | Email superAdmin cho `npm run db:seed` (bước superAdmin) |
 | `SEED_SUPER_ADMIN_PASSWORD` | khi seed tạo user mới | — | Mật khẩu superAdmin, theo rule mật khẩu đăng ký |
 
 Thiếu biến bắt buộc → backend in `[envConfig] Biến môi trường bắt buộc chưa điền: …` rồi thoát.
