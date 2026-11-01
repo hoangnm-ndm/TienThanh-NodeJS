@@ -1,6 +1,6 @@
 import { User } from "../user/user.model.js";
 import { toPublicUser } from "../user/user.mapper.js";
-import { ROLE_ACCESS_FIELDS } from "../role/role.model.js";
+import { ROLE_ACCESS_POPULATE } from "../role/role.model.js";
 import { roleService } from "../role/role.service.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
@@ -54,7 +54,7 @@ export const authService = {
       password: await hashPassword(password),
       roles: [defaultRole._id],
     });
-    await newUser.populate("roles", ROLE_ACCESS_FIELDS);
+    await newUser.populate(ROLE_ACCESS_POPULATE);
     // TODO: service mail (verify email)
     return toPublicUser(newUser);
   },
@@ -63,7 +63,7 @@ export const authService = {
   login: async ({ email, password }, context) => {
     const user = await User.findOne({ email })
       .select("+password")
-      .populate("roles", ROLE_ACCESS_FIELDS);
+      .populate(ROLE_ACCESS_POPULATE);
 
     // * Cùng 1 thông báo cho "sai email" và "sai mật khẩu" → không lộ email nào đã đăng ký.
     const isMatch =
@@ -138,7 +138,7 @@ export const authService = {
 
   // * Kèm level + permissions để frontend ẩn / hiện chức năng (server vẫn kiểm tra thật).
   getMe: async (userId) => {
-    const user = await User.findById(userId).populate("roles", ROLE_ACCESS_FIELDS);
+    const user = await User.findById(userId).populate(ROLE_ACCESS_POPULATE);
     if (!user) throw httpErrors.notFound("Không tìm thấy người dùng");
     return toPublicUser(user, buildAccessContext(user));
   },

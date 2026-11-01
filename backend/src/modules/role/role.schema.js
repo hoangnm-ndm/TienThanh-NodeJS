@@ -35,6 +35,22 @@ const permissionsField = z
   .max(PERMISSION_KEYS.length, "Danh sách permission quá dài")
   .transform((permissions) => [...new Set(permissions)]);
 
+// * GET /api/roles?status=active|deleted|all
+export const listRolesQuerySchema = z
+  .object({
+    status: z
+      .enum(["active", "deleted", "all"], { error: "status chỉ được là: active, deleted, all" })
+      .default("active"),
+  })
+  .strict();
+
+// * Khôi phục kèm đổi tên (tuỳ chọn) khi tên cũ đã bị role khác dùng.
+export const restoreRoleSchema = z
+  .object({
+    name: nameField.optional(),
+  })
+  .strict();
+
 export const createRoleSchema = z
   .object({
     name: nameField,

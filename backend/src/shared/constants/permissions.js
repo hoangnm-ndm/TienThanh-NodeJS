@@ -16,7 +16,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   { key: PERMISSIONS.ROLE_READ, group: "role", description: "Xem role và danh mục permission" },
   { key: PERMISSIONS.ROLE_CREATE, group: "role", description: "Tạo role" },
   { key: PERMISSIONS.ROLE_UPDATE, group: "role", description: "Sửa role, thêm / bớt permission" },
-  { key: PERMISSIONS.ROLE_DELETE, group: "role", description: "Xoá role" },
+  { key: PERMISSIONS.ROLE_DELETE, group: "role", description: "Xoá mềm và khôi phục role" },
 ]);
 
 export const PERMISSION_KEYS = Object.freeze(PERMISSION_CATALOG.map((p) => p.key));

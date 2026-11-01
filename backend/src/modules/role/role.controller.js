@@ -11,7 +11,7 @@ export const roleController = {
   list: async (req, res) =>
     sendSuccess(res, {
       message: "Lấy danh sách role thành công",
-      data: await roleService.list(),
+      data: await roleService.list(req.validated.query),
     }),
 
   getById: async (req, res) =>
@@ -34,7 +34,22 @@ export const roleController = {
     }),
 
   remove: async (req, res) => {
-    await roleService.remove(req.user, req.validated.params.id);
-    return sendSuccess(res, { message: "Xoá role thành công" });
+    const { role, changed } = await roleService.remove(req.user, req.validated.params.id);
+    return sendSuccess(res, {
+      message: changed ? "Đã chuyển role vào thùng rác" : "Role đã bị xoá trước đó",
+      data: role,
+    });
+  },
+
+  restore: async (req, res) => {
+    const { role, changed } = await roleService.restore(
+      req.user,
+      req.validated.params.id,
+      req.validated.body,
+    );
+    return sendSuccess(res, {
+      message: changed ? "Khôi phục role thành công" : "Role chưa bị xoá",
+      data: role,
+    });
   },
 };

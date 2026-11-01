@@ -5,11 +5,10 @@ import { ROLE_LEVEL_MAX, ROLE_LEVEL_MIN } from "../../shared/constants/roles.js"
 
 const roleSchema = new mongoose.Schema(
   {
-    // * Slug dùng làm khoá (vd "content-editor"), unique.
+    // * Slug dùng làm khoá (vd "content-editor"), unique trong các role chưa xoá (index bên dưới).
     name: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
       lowercase: true,
     },
@@ -33,11 +32,36 @@ const roleSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // * Xoá mềm: khác null = đã xoá (vào thùng rác), khôi phục được.
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   schemaOptions,
 );
 
+// * Tên chỉ unique giữa các role CHƯA xoá → tên của role đã xoá mềm được dùng lại.
+// * (Thiếu field deletedAt cũng tính là null → role cũ vẫn được kiểm tra.)
+roleSchema.index(
+  { name: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null }, name: "name_active_unique" },
+);
+
 export const Role = mongoose.model("Role", roleSchema);
 
-// * Field cần populate khi tính quyền.
-export const ROLE_ACCESS_FIELDS = "name level permissions";
+// * Điều kiện "role đang hoạt động" — mọi truy vấn role nghiệp vụ phải dùng.
+export const ACTIVE_ROLE = Object.freeze({ deletedAt: null });
+
+// * Populate roles của user để tính quyền: bỏ qua role đã xoá mềm.
+// * Không freeze: Mongoose có thể cast / gán vào object option khi populate.
+export const ROLE_ACCESS_POPULATE = {
+  path: "roles",
+  select: "name level permissions",
+  match: { ...ACTIVE_ROLE },
+};

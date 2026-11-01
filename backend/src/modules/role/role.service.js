@@ -1,4 +1,4 @@
-import { Role } from "./role.model.js";
+import { ACTIVE_ROLE, Role } from "./role.model.js";
 import { User } from "../user/user.model.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
@@ -18,21 +18,40 @@ function toPublicRole(role, userCount) {
     permissions: [...role.permissions].sort(),
     isSystem: role.isSystem,
     ...(userCount !== undefined && { userCount }),
+    deletedAt: role.deletedAt ?? null,
+    deletedBy: role.deletedBy ? String(role.deletedBy) : null,
     createdAt: role.createdAt,
     updatedAt: role.updatedAt,
   };
 }
 
-async function findRoleOrThrow(roleId) {
-  const role = await Role.findById(roleId);
-  if (!role) throw httpErrors.notFound("Không tìm thấy role", ERROR_CODES.ROLE_NOT_FOUND);
+const roleNotFound = () =>
+  httpErrors.notFound("Không tìm thấy role", ERROR_CODES.ROLE_NOT_FOUND);
+
+// * Mặc định chỉ tìm role đang hoạt động; includeDeleted cho xem / xoá / khôi phục role trong thùng rác.
+async function findRoleOrThrow(roleId, { includeDeleted = false } = {}) {
+  const role = await Role.findOne({ _id: roleId, ...(!includeDeleted && ACTIVE_ROLE) });
+  if (!role) throw roleNotFound();
   return role;
 }
 
+// * Tên chỉ cần unique giữa các role đang hoạt động (role đã xoá mềm không giữ tên).
 async function assertNameAvailable(name, exceptId) {
-  const existing = await Role.exists({ name, ...(exceptId && { _id: { $ne: exceptId } }) });
-  if (existing) throw httpErrors.conflict("Tên role đã tồn tại", ERROR_CODES.ROLE_NAME_EXISTS);
+  const existing = await Role.exists({
+    name,
+    ...ACTIVE_ROLE,
+    ...(exceptId && { _id: { $ne: exceptId } }),
+  });
+  if (existing)
+    throw httpErrors.conflict("Tên role đã được role khác đang dùng", ERROR_CODES.ROLE_NAME_EXISTS);
 }
+
+// * status: active (mặc định) | deleted (thùng rác) | all.
+const STATUS_FILTER = {
+  active: ACTIVE_ROLE,
+  deleted: { deletedAt: { $ne: null } },
+  all: {},
+};
 
 const assertRoleBelow = (actor, level, action) =>
   assertLevelBelow(
@@ -55,7 +74,7 @@ export const roleService = {
 
   // * Role mặc định khi đăng ký — tạo bởi npm run db:seed.
   getDefaultRole: async () => {
-    const role = await Role.findOne({ name: SYSTEM_ROLES.MEMBER });
+    const role = await Role.findOne({ name: SYSTEM_ROLES.MEMBER, ...ACTIVE_ROLE });
     if (!role)
       throw new AppError({
         statusCode: 500,
@@ -65,16 +84,17 @@ export const roleService = {
     return role;
   },
 
-  list: async () => {
+  list: async ({ status = "active" } = {}) => {
     const [roles, counts] = await Promise.all([
-      Role.find().sort({ level: -1, name: 1 }),
+      Role.find(STATUS_FILTER[status]).sort({ level: -1, name: 1 }),
       countUsersByRole(),
     ]);
     return roles.map((role) => toPublicRole(role, counts.get(String(role._id)) ?? 0));
   },
 
+  // * Xem được cả role đã xoá mềm (deletedAt khác null).
   getById: async (roleId) => {
-    const role = await findRoleOrThrow(roleId);
+    const role = await findRoleOrThrow(roleId, { includeDeleted: true });
     return toPublicRole(role, await User.countDocuments({ roles: role._id }));
   },
 
@@ -107,8 +127,8 @@ export const roleService = {
       assertCanGrant(actor.access, body.permissions.filter((p) => !current.has(p)));
     }
 
-    // * Có điều kiện level cũ → không ghi đè nếu role vừa bị người khác nâng level.
-    const updated = await Role.findOneAndUpdate({ _id: role._id, level: role.level }, body, {
+    // * Có điều kiện level cũ + chưa bị xoá → không ghi đè nếu role vừa bị đổi / xoá.
+    const updated = await Role.findOneAndUpdate({ _id: role._id, level: role.level, ...ACTIVE_ROLE }, body, {
       returnDocument: "after",
       runValidators: true,
     });
@@ -116,8 +136,10 @@ export const roleService = {
     return toPublicRole(updated, await User.countDocuments({ roles: role._id }));
   },
 
+  // * Xoá mềm: chuyển vào thùng rác, khôi phục được. Đã xoá rồi → trả về, không lỗi (idempotent).
   remove: async (actor, roleId) => {
-    const role = await findRoleOrThrow(roleId);
+    const role = await findRoleOrThrow(roleId, { includeDeleted: true });
+    if (role.deletedAt) return { role: toPublicRole(role, 0), changed: false };
     if (role.isSystem)
       throw httpErrors.forbidden("Không thể xoá role hệ thống", ERROR_CODES.SYSTEM_ROLE_PROTECTED);
     assertRoleBelow(actor, role.level, "xoá");
@@ -129,8 +151,38 @@ export const roleService = {
         ERROR_CODES.ROLE_IN_USE,
       );
 
-    await Role.deleteOne({ _id: role._id });
-    // * Phòng race: có người vừa được gán role này giữa lúc đếm và lúc xoá.
+    const deleted = await Role.findOneAndUpdate(
+      { _id: role._id, level: role.level, ...ACTIVE_ROLE },
+      { deletedAt: new Date(), deletedBy: actor.id },
+      { returnDocument: "after" },
+    );
+    if (!deleted) throw httpErrors.conflict("Role vừa thay đổi, vui lòng thử lại");
+
+    // * Phòng race: có người vừa được gán role này giữa lúc đếm và lúc xoá → gỡ ra,
+    //   giữ bất biến "role đã xoá không còn gán cho ai" (khôi phục không tự trả quyền cho ai).
     await User.updateMany({ roles: role._id }, { $pull: { roles: role._id } });
+    return { role: toPublicRole(deleted, 0), changed: true };
+  },
+
+  // * Khôi phục từ thùng rác. Tên đã bị role khác đang dùng → 409, hoặc truyền name mới để khôi phục kèm đổi tên.
+  // * Khôi phục KHÔNG gán lại role cho user cũ — phải gán lại bằng PUT /api/users/:id/roles.
+  restore: async (actor, roleId, { name } = {}) => {
+    const role = await findRoleOrThrow(roleId, { includeDeleted: true });
+    if (!role.deletedAt) return { role: toPublicRole(role, await User.countDocuments({ roles: role._id })), changed: false };
+    assertRoleBelow(actor, role.level, "khôi phục");
+
+    const nextName = name ?? role.name;
+    await assertNameAvailable(nextName, role._id);
+
+    // * Gỡ id role còn sót trong user (do race / sửa tay DB) để khôi phục không âm thầm trả quyền cho ai.
+    await User.updateMany({ roles: role._id }, { $pull: { roles: role._id } });
+
+    const restored = await Role.findOneAndUpdate(
+      { _id: role._id, level: role.level, deletedAt: { $ne: null } },
+      { deletedAt: null, deletedBy: null, name: nextName },
+      { returnDocument: "after", runValidators: true },
+    );
+    if (!restored) throw httpErrors.conflict("Role vừa thay đổi, vui lòng thử lại");
+    return { role: toPublicRole(restored, 0), changed: true };
   },
 };

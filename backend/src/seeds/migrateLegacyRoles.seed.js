@@ -17,7 +17,7 @@ export async function migrateLegacyRoles() {
     return hasLegacyIndex ? "Đã xoá index cũ role_1, không có dữ liệu cần chuyển" : "Không có dữ liệu role cũ";
 
   const roleIdByName = new Map(
-    (await Role.find({ name: { $in: Object.values(SYSTEM_ROLES) } })).map((role) => [role.name, role._id]),
+    (await Role.find({ name: { $in: Object.values(SYSTEM_ROLES) }, deletedAt: null })).map((role) => [role.name, role._id]),
   );
 
   // * Chạy superAdmin trước: unique index isSuperAdmin chặn nếu dữ liệu cũ lỡ có > 1 superAdmin.

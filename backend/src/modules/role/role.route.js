@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { roleController } from "./role.controller.js";
-import { createRoleSchema, roleIdParamsSchema, updateRoleSchema } from "./role.schema.js";
+import {
+  createRoleSchema,
+  listRolesQuerySchema,
+  restoreRoleSchema,
+  roleIdParamsSchema,
+  updateRoleSchema,
+} from "./role.schema.js";
 import { validate } from "../../shared/middlewares/validate.js";
 import { authenticate } from "../../shared/middlewares/authenticate.js";
 import { authorize } from "../../shared/middlewares/authorize.js";
@@ -19,7 +25,12 @@ permissionRoutes.get(
 export const roleRoutes = Router();
 roleRoutes.use(authenticate);
 
-roleRoutes.get("/", authorize(PERMISSIONS.ROLE_READ), roleController.list);
+roleRoutes.get(
+  "/",
+  authorize(PERMISSIONS.ROLE_READ),
+  validate({ query: listRolesQuerySchema }),
+  roleController.list,
+);
 roleRoutes.get(
   "/:id",
   authorize(PERMISSIONS.ROLE_READ),
@@ -43,4 +54,11 @@ roleRoutes.delete(
   authorize(PERMISSIONS.ROLE_DELETE),
   validate({ params: roleIdParamsSchema }),
   roleController.remove,
+);
+// * Khôi phục là thao tác ngược của xoá → dùng chung permission role:delete.
+roleRoutes.patch(
+  "/:id/restore",
+  authorize(PERMISSIONS.ROLE_DELETE),
+  validate({ params: roleIdParamsSchema, body: restoreRoleSchema }),
+  roleController.restore,
 );

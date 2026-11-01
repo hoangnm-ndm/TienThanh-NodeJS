@@ -1,5 +1,5 @@
 import { User } from "../../modules/user/user.model.js";
-import { ROLE_ACCESS_FIELDS } from "../../modules/role/role.model.js";
+import { ROLE_ACCESS_POPULATE } from "../../modules/role/role.model.js";
 import { httpErrors } from "../errors/httpErrors.js";
 import { ERROR_CODES } from "../errors/errorCodes.js";
 import { COOKIE_NAMES } from "../utils/authCookies.js";
@@ -30,7 +30,7 @@ export async function authenticate(req, res, next) {
   //   gỡ quyền có hiệu lực ngay (không nhét permission vào JWT).
   const user = await User.findById(payload.sub)
     .select("email roles isSuperAdmin isBlocked")
-    .populate("roles", ROLE_ACCESS_FIELDS)
+    .populate(ROLE_ACCESS_POPULATE)
     .lean();
   if (!user)
     throw httpErrors.unauthorized(

@@ -1,6 +1,6 @@
 import { User } from "./user.model.js";
 import { toPublicUser } from "./user.mapper.js";
-import { Role, ROLE_ACCESS_FIELDS } from "../role/role.model.js";
+import { ACTIVE_ROLE, Role, ROLE_ACCESS_POPULATE } from "../role/role.model.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
 import { ERROR_CODES } from "../../shared/errors/errorCodes.js";
@@ -21,7 +21,7 @@ function assertNotSelf(actor, targetId, action) {
 }
 
 async function findTargetOrThrow(targetId) {
-  const target = await User.findById(targetId).populate("roles", ROLE_ACCESS_FIELDS);
+  const target = await User.findById(targetId).populate(ROLE_ACCESS_POPULATE);
   if (!target)
     throw httpErrors.notFound("Không tìm thấy người dùng", ERROR_CODES.USER_NOT_FOUND);
   return target;
@@ -43,7 +43,7 @@ async function updateIfRolesUnchanged(target, update) {
     { _id: target._id, isSuperAdmin: false, roles: originalRoleIds },
     update,
     { returnDocument: "after" },
-  ).populate("roles", ROLE_ACCESS_FIELDS);
+  ).populate(ROLE_ACCESS_POPULATE);
   if (!updated) throw httpErrors.conflict("Người dùng vừa thay đổi, vui lòng thử lại");
   return updated;
 }
@@ -58,7 +58,8 @@ export const userService = {
     const target = await findTargetOrThrow(targetId);
     assertCanManage(actor, target);
 
-    const roles = await Role.find({ _id: { $in: roleIds } });
+    // * Role đã xoá mềm coi như không tồn tại.
+    const roles = await Role.find({ _id: { $in: roleIds }, ...ACTIVE_ROLE });
     if (roles.length !== roleIds.length) {
       const found = new Set(roles.map((role) => String(role._id)));
       throw httpErrors.notFound(
