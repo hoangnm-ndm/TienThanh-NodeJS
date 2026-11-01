@@ -1,6 +1,8 @@
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
-dotenv.config({ quiet: true });
+// * Đọc backend/.env theo vị trí file này → chạy từ gốc monorepo hay từ backend/ đều đúng.
+dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)), quiet: true });
 
 // * Biến để trống trong .env = chưa khai báo → dùng giá trị mặc định.
 function readEnv(key, defaultValue) {
