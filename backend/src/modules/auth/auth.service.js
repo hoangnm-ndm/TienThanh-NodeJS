@@ -1,4 +1,5 @@
 import { User } from "../user/user.model.js";
+import { toPublicUser } from "../user/user.mapper.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
 import { ERROR_CODES } from "../../shared/errors/errorCodes.js";
@@ -12,18 +13,6 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "../../shared/utils/jwt.js";
-
-// * Chỉ trả field an toàn cho client.
-function toPublicUser(user) {
-  return {
-    id: String(user._id),
-    email: user.email,
-    role: user.role,
-    language: user.language,
-    isVerify: user.isVerify,
-    createdAt: user.createdAt,
-  };
-}
 
 function assertNotBlocked(user) {
   if (user.isBlocked)

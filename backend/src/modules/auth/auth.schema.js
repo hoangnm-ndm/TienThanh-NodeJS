@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-const emailField = z
+export const emailField = z
   .string({ error: "Email là bắt buộc" })
   .trim()
   .toLowerCase()
   .pipe(z.email("Email không hợp lệ").max(254, "Email tối đa 254 ký tự"));
 
 // * bcrypt chỉ dùng 72 byte đầu → giới hạn độ dài để tránh mật khẩu dài bị cắt ngầm / DoS.
-const newPasswordField = z
+export const newPasswordField = z
   .string({ error: "Password là bắt buộc" })
   .min(6, "Password tối thiểu 6 ký tự")
   .max(64, "Password tối đa 64 ký tự")

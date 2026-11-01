@@ -39,4 +39,10 @@ const userSchema = new mongoose.Schema(
   schemaOptions,
 );
 
+// * Chỉ cho phép 1 superAdmin: unique index chỉ áp lên document có role = superAdmin.
+userSchema.index(
+  { role: 1 },
+  { unique: true, partialFilterExpression: { role: ROLES.SUPER_ADMIN } },
+);
+
 export const User = mongoose.model("User", userSchema);

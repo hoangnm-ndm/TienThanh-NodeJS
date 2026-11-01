@@ -46,5 +46,9 @@ export const sessionService = {
       ? Session.updateOne({ _id: sessionId, revokedAt: null }, { revokedAt: new Date() })
       : null,
 
-  // TODO (mở rộng quản lý thiết bị): listByUser(userId), revokeAllByUser(userId, { exceptSessionId }).
+  // * Thu hồi mọi phiên của user (vd: khi bị khoá) → mọi thiết bị phải đăng nhập lại.
+  revokeAllByUser: (userId) =>
+    Session.updateMany({ userId, revokedAt: null }, { revokedAt: new Date() }),
+
+  // TODO (mở rộng quản lý thiết bị): listByUser(userId), tham số exceptSessionId cho revokeAllByUser.
 };

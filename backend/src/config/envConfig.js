@@ -24,6 +24,10 @@ export const envConfig = {
   JWT_REFRESH_EXPIRES_IN: readEnv("JWT_REFRESH_EXPIRES_IN", "7d"),
 
   COOKIE_DOMAIN: readEnv("COOKIE_DOMAIN"),
+
+  // * Chỉ dùng cho npm run db:seed (không bắt buộc khi chạy server).
+  SEED_SUPER_ADMIN_EMAIL: readEnv("SEED_SUPER_ADMIN_EMAIL"),
+  SEED_SUPER_ADMIN_PASSWORD: readEnv("SEED_SUPER_ADMIN_PASSWORD"),
 };
 
 envConfig.IS_PRODUCTION = envConfig.NODE_ENV === "production";
