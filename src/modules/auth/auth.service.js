@@ -2,8 +2,16 @@ import { User } from "../user/user.model.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
 import { ERROR_CODES } from "../../shared/errors/errorCodes.js";
-import { comparePassword, hashPassword, hashToken } from "../../shared/utils/hash.js";
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../shared/utils/jwt.js";
+import {
+  comparePassword,
+  hashPassword,
+  hashToken,
+} from "../../shared/utils/hash.js";
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+} from "../../shared/utils/jwt.js";
 
 // * Chỉ trả field an toàn cho client.
 function toPublicUser(user) {
@@ -18,7 +26,11 @@ function toPublicUser(user) {
 }
 
 function assertNotBlocked(user) {
-  if (user.isBlocked) throw httpErrors.forbidden("Tài khoản đã bị khoá", ERROR_CODES.ACCOUNT_BLOCKED);
+  if (user.isBlocked)
+    throw httpErrors.forbidden(
+      "Tài khoản đã bị khoá",
+      ERROR_CODES.ACCOUNT_BLOCKED,
+    );
 }
 
 function signTokenPair({ user, sessionId }) {
@@ -29,14 +41,24 @@ function signTokenPair({ user, sessionId }) {
 }
 
 const invalidRefreshToken = () =>
-  httpErrors.unauthorized("Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại", ERROR_CODES.TOKEN_INVALID);
+  httpErrors.unauthorized(
+    "Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại",
+    ERROR_CODES.TOKEN_INVALID,
+  );
 
 export const authService = {
   register: async ({ email, password }) => {
     const userExist = await User.exists({ email });
-    if (userExist) throw httpErrors.conflict("Email đã được sử dụng", ERROR_CODES.EMAIL_ALREADY_EXISTS);
+    if (userExist)
+      throw httpErrors.conflict(
+        "Đã có lỗi xảy ra",
+        ERROR_CODES.EMAIL_ALREADY_REGISTERED,
+      );
 
-    const newUser = await User.create({ email, password: await hashPassword(password) });
+    const newUser = await User.create({
+      email,
+      password: await hashPassword(password),
+    });
     // TODO: service mail (verify email)
     return toPublicUser(newUser);
   },
@@ -46,13 +68,23 @@ export const authService = {
     const user = await User.findOne({ email }).select("+password");
 
     // * Cùng 1 thông báo cho "sai email" và "sai mật khẩu" → không lộ email nào đã đăng ký.
-    const isMatch = user?.password && (await comparePassword(password, user.password));
-    if (!isMatch) throw httpErrors.unauthorized("Email hoặc mật khẩu không đúng", ERROR_CODES.INVALID_CREDENTIALS);
+    const isMatch =
+      user?.password && (await comparePassword(password, user.password));
+    if (!isMatch)
+      throw httpErrors.unauthorized(
+        "Email hoặc mật khẩu không đúng",
+        ERROR_CODES.INVALID_CREDENTIALS,
+      );
     assertNotBlocked(user);
 
     const sessionId = sessionService.newId();
     const tokens = signTokenPair({ user, sessionId });
-    await sessionService.create({ sessionId, userId: user._id, refreshToken: tokens.refreshToken, ...context });
+    await sessionService.create({
+      sessionId,
+      userId: user._id,
+      refreshToken: tokens.refreshToken,
+      ...context,
+    });
 
     return { user: toPublicUser(user), ...tokens };
   },
@@ -62,7 +94,8 @@ export const authService = {
     const payload = verifyRefreshToken(refreshToken);
 
     const session = await sessionService.findActiveById(payload.sid);
-    if (!session || String(session.userId) !== payload.sub) throw invalidRefreshToken();
+    if (!session || String(session.userId) !== payload.sub)
+      throw invalidRefreshToken();
 
     // * Token hợp lệ chữ ký nhưng không phải token hiện hành → đã bị dùng lại (có thể bị đánh cắp)
     //   → thu hồi cả phiên, buộc đăng nhập lại.
