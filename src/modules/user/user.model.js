@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { schemaOptions } from "../../config/schemaOptions.js";
+import { ROLES } from "../../shared/constants/roles.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -7,9 +8,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true,
+      lowercase: true,
     },
     password: {
       type: String,
+      // * Không trả password trong mọi query mặc định; cần thì .select("+password").
+      select: false,
     },
     language: {
       type: String,
@@ -18,8 +23,8 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["superAdmin", "admin", "member"],
-      default: "member",
+      enum: Object.values(ROLES),
+      default: ROLES.MEMBER,
     },
     isVerify: {
       type: Boolean,

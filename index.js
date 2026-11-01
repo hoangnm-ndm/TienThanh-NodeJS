@@ -1,4 +1,5 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import { connectDB } from "./src/config/connectDB.js";
 import { routes } from "./src/routes/index.js";
 import { envConfig } from "./src/config/envConfig.js";
@@ -10,6 +11,7 @@ const app = express();
 // endpoint
 
 app.use(express.json());
+app.use(cookieParser());
 
 connectDB();
 

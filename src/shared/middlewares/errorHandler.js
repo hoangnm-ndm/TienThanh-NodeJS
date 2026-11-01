@@ -2,6 +2,7 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import { AppError } from "../errors/AppError.js";
 import { ERROR_CODES } from "../errors/errorCodes.js";
+import { logger } from "../logger.js";
 
 function normalizeError(err) {
   if (err instanceof AppError) {
@@ -24,7 +25,51 @@ function normalizeError(err) {
       })),
     };
   }
-  // if(err instanceof jwt)
+
+  // * TokenExpiredError kế thừa JsonWebTokenError → phải kiểm tra trước.
+  if (err instanceof jwt.TokenExpiredError) {
+    return {
+      statusCode: 401,
+      code: ERROR_CODES.TOKEN_EXPIRED,
+      message: "Token đã hết hạn",
+    };
+  }
+
+  if (err instanceof jwt.JsonWebTokenError) {
+    return {
+      statusCode: 401,
+      code: ERROR_CODES.TOKEN_INVALID,
+      message: "Token không hợp lệ",
+    };
+  }
+
+  // * express.json() ném lỗi có type này khi body không phải JSON hợp lệ.
+  if (err?.type === "entity.parse.failed") {
+    return {
+      statusCode: 400,
+      code: ERROR_CODES.INVALID_JSON,
+      message: "Body không phải JSON hợp lệ",
+    };
+  }
+
+  // * MongoDB duplicate key (vd: 2 request đăng ký cùng email cùng lúc).
+  if (err?.code === 11000) {
+    return {
+      statusCode: 409,
+      code: ERROR_CODES.DUPLICATE_KEY,
+      message: "Dữ liệu đã tồn tại",
+      details: Object.keys(err.keyValue ?? {}).map((field) => ({
+        field,
+        message: `${field} đã tồn tại`,
+      })),
+    };
+  }
+
+  return {
+    statusCode: 500,
+    code: ERROR_CODES.INTERNAL_SERVER_ERROR,
+    message: "Lỗi hệ thống, vui lòng thử lại sau",
+  };
 }
 
 export function errorHandler(err, req, res, next) {

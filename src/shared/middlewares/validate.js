@@ -1,10 +1,13 @@
 import { z } from "zod";
-//   params: PARAMS, //* :id
-//   query: query, // * search, sort, paginate,
-//   body: body // * form
-// }
 
-const REQUEST_PARTS = ["PARAMS", "QUERY", "BODY"];
+// * validate({ params, query, body, cookies })
+//   params:  :id
+//   query:   search, sort, paginate
+//   body:    form
+//   cookies: refreshToken… (cần cookie-parser chạy trước)
+// * Kết quả đã parse (trim, lowercase, coerce…) nằm ở req.validated.<part>.
+
+const REQUEST_PARTS = ["params", "query", "body", "cookies"];
 
 export function validate(schemas) {
   return (req, res, next) => {
@@ -16,7 +19,11 @@ export function validate(schemas) {
 
       const result = schemas[part].safeParse(req[part] ?? {});
       if (result.success) validated[part] = result.data;
-      else issues.push(...result.error.issues);
+      else
+        issues.push(
+          // * Gắn tên phần (body.email, cookies.refreshToken) để client biết lỗi ở đâu.
+          ...result.error.issues.map((issue) => ({ ...issue, path: [part, ...issue.path] })),
+        );
     }
 
     if (issues.length > 0) throw new z.ZodError(issues);
@@ -25,5 +32,3 @@ export function validate(schemas) {
     next();
   };
 }
-
-// const validate = (schemas) => () => {}
