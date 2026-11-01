@@ -15,6 +15,7 @@ Monorepo npm workspaces: `backend/` (Express 5 + Mongoose 9 + zod 4, ESM), `fron
 - Phân tầng route → controller → service → model; controller đọc `req.validated.*`, trả `sendSuccess`, lỗi `throw httpErrors.*`. Chi tiết: [docs/03-quy-uoc-code.md](docs/03-quy-uoc-code.md).
 - Auth: cookie httpOnly + session lưu DB có rotation ([docs/04-xac-thuc.md](docs/04-xac-thuc.md)). Route cần bảo vệ: `authenticate` rồi `authorize(PERMISSIONS.X)`.
 - Phân quyền động (RBAC): permission cố định trong `shared/constants/permissions.js`, role là dữ liệu DB, user có `roles[]`, superAdmin = cờ `isSuperAdmin` (tối đa 1). Mọi thao tác quản lý phải giữ luật chống leo thang: không tự tác động lên mình, chỉ đụng level thấp hơn hẳn (`assertLevelBelow`), chỉ cấp permission mình có (`assertCanGrant`) — [docs/05-nguoi-dung.md](docs/05-nguoi-dung.md).
+- Role xoá mềm (`deletedAt`): mọi truy vấn role nghiệp vụ phải lọc bằng `ACTIVE_ROLE`, populate role của user dùng `ROLE_ACCESS_POPULATE` (`backend/src/modules/role/role.model.js`).
 - Seeder trong `backend/src/seeds/` phải idempotent.
 - Frontend gọi API bằng đường dẫn tương đối `/api/...` (Vite proxy, cùng origin) + `credentials: "include"`; backend không bật CORS.
 - Thêm / đổi biến env: sửa `.env.example` của workspace → `npm run env:sync` → cập nhật bảng ở `docs/01-chay-local.md`.

@@ -21,11 +21,13 @@ erDiagram
     date isBlocked
   }
   Role {
-    string name "slug, unique (vd content-editor)"
+    string name "slug, unique giữa role chưa xoá (vd content-editor)"
     string description
     string[] permissions "chỉ giá trị trong PERMISSIONS"
     number level "1–1000, cao hơn = cấp cao hơn"
     boolean isSystem "admin, member: không đổi tên / xoá"
+    date deletedAt "khác null = đã xoá mềm (thùng rác)"
+    ObjectId deletedBy
   }
 ```
 
@@ -50,7 +52,7 @@ Permission hiện có:
 | `role:read` | Xem role và danh mục permission |
 | `role:create` | Tạo role |
 | `role:update` | Sửa role, thêm / bớt permission |
-| `role:delete` | Xoá role |
+| `role:delete` | Xoá mềm và khôi phục role |
 
 Role hệ thống (tạo bởi `npm run db:seed`):
 
@@ -74,6 +76,7 @@ Permission của role hệ thống chỉnh được qua API sau khi seed. Seed k
    - permission của các role **mới gán thêm** cho user.
 5. Role hệ thống không đổi tên được, không xoá được → `403 SYSTEM_ROLE_PROTECTED`.
 6. Role đang được gán cho user thì không xoá được → `409 ROLE_IN_USE`. Phải gỡ role khỏi các user đó trước.
+7. Khôi phục role cũng theo luật level (chỉ khôi phục role có level thấp hơn hẳn cấp của mình), và cần permission `role:delete`.
 
 Ví dụ: admin (level 50) tạo role `editor` level 10 có `user:block`, rồi gán cho member. Người đó giờ có cấp 10: khoá được user cấp 1, nhưng không khoá được admin. Nếu superAdmin bỏ `role:delete` khỏi role admin, admin không cấp `role:delete` cho ai được nữa.
 
@@ -86,11 +89,12 @@ Mọi route đều qua `authenticate` (chưa đăng nhập → `401`). Thiếu p
 | Method · Path | Permission | Input | Thành công |
 | --- | --- | --- | --- |
 | `GET /api/permissions` | `role:read` | — | `200`, `data` = `[{ key, group, description }]` |
-| `GET /api/roles` | `role:read` | — | `200`, danh sách role (level giảm dần) kèm `userCount` |
-| `GET /api/roles/:id` | `role:read` | — | `200`, role kèm `userCount` |
+| `GET /api/roles` | `role:read` | Query `?status=active` (mặc định) · `deleted` (thùng rác) · `all` | `200`, danh sách role (level giảm dần) kèm `userCount` |
+| `GET /api/roles/:id` | `role:read` | — | `200`, role kèm `userCount`. Xem được cả role đã xoá mềm |
 | `POST /api/roles` | `role:create` | `{ name, level, description?, permissions? }` | `201`, role |
 | `PATCH /api/roles/:id` | `role:update` | Ít nhất 1 trong `name`, `description`, `level`, `permissions` | `200`, role |
-| `DELETE /api/roles/:id` | `role:delete` | — | `200` |
+| `DELETE /api/roles/:id` | `role:delete` | — | `200`, role (`deletedAt` khác null). **Xoá mềm**: chuyển vào thùng rác |
+| `PATCH /api/roles/:id/restore` | `role:delete` | `{ name? }`: đổi tên khi khôi phục (tuỳ chọn) | `200`, role (`deletedAt: null`) |
 
 Rule validate (`role.schema.js`, `.strict()`):
 
@@ -101,7 +105,30 @@ Rule validate (`role.schema.js`, `.strict()`):
 | `description` | ≤ 200 ký tự |
 | `permissions` | Mảng giá trị trong danh mục, tự loại trùng. **Gửi permissions = thay toàn bộ danh sách** |
 
-`data` role: `{ id, name, description, level, permissions, isSystem, userCount, createdAt, updatedAt }`.
+`data` role: `{ id, name, description, level, permissions, isSystem, userCount, deletedAt, deletedBy, createdAt, updatedAt }`.
+
+### Xoá mềm và khôi phục role
+
+Đọc khi cần hiểu vòng đời của role sau khi bị xoá.
+
+```mermaid
+stateDiagram-v2
+  [*] --> active: POST /api/roles
+  active --> deleted: DELETE /:id (không còn user nào dùng)
+  deleted --> active: PATCH /:id/restore (tên chưa bị role khác dùng, hoặc gửi name mới)
+```
+
+**Khi một role nằm trong thùng rác** (`deletedAt` khác null):
+- **Không có tác dụng**: không cấp quyền cho ai, không gán được (`404 ROLE_NOT_FOUND`), không sửa được qua `PATCH /:id` (`404`). Muốn sửa thì khôi phục trước.
+- **Không giữ tên**: tạo role mới trùng tên với role đã xoá vẫn được.
+
+**Khi khôi phục**:
+- Nếu tên cũ đã bị một role đang hoạt động dùng → `409 ROLE_NAME_EXISTS`. Gửi `{ "name": "<tên-mới>" }` để vừa khôi phục vừa đổi tên.
+- Khôi phục **không gán lại** role cho ai, kể cả những user từng có role này trước khi xoá. Muốn cấp lại thì gán lại bằng `PUT /api/users/:id/roles`. Server còn gỡ mọi id role sót trong `user.roles` (do race hoặc sửa tay DB) trước khi khôi phục.
+
+**Idempotent**: xoá role đã xoá hoặc khôi phục role chưa xoá vẫn trả `200`, `message` cho biết không thay đổi.
+
+Hiện chưa có xoá vĩnh viễn: document role vẫn nằm trong collection `roles`.
 
 **User** — `/api/users`:
 
@@ -120,7 +147,7 @@ Lỗi riêng ngoài các luật ở trên:
 | --- | --- |
 | `400 VALIDATION_ERROR` | `:id` / `roleIds` không phải ObjectId, body sai rule |
 | `404 USER_NOT_FOUND` / `ROLE_NOT_FOUND` | Không có user / role (với `roleIds`, message liệt kê id không tồn tại) |
-| `409 ROLE_NAME_EXISTS` | Trùng tên role |
+| `409 ROLE_NAME_EXISTS` | Trùng tên với role đang hoạt động (khi tạo, đổi tên, khôi phục) |
 | `409 DUPLICATE_KEY` | Dữ liệu vừa bị người khác đổi giữa lúc kiểm tra và lúc ghi (hiếm). Gọi lại |
 
 `/api/auth/me` (và response đăng nhập) trả thêm:
@@ -196,5 +223,7 @@ Thêm seeder mới:
 - **Dữ liệu cũ có hơn 1 superAdmin**: migration dừng với lỗi `E11000` vì unique index trên `isSuperAdmin` chặn. Kiểm tra bằng `db.users.countDocuments({ role: "superAdmin" })`, hạ bớt về 1, rồi chạy lại seed.
 - **Đổi người giữ superAdmin**: hiện phải sửa tay trong DB, theo thứ tự đặt `isSuperAdmin: false` cho người cũ rồi mới đặt `true` cho người mới. Chưa có API chuyển giao.
 - **Chi phí mỗi request**: `authenticate` populate role nên tốn thêm 1 query. Chưa có cache.
-- **Chưa có**: API danh sách / chi tiết user, chuyển giao superAdmin, audit log (ai cấp quyền / khoá ai), quyền theo dữ liệu (vd "chỉ sửa bài của mình").
+- **Index tên role**: `name_active_unique` là unique index riêng phần với điều kiện `deletedAt: null`. Đã kiểm tra trên MongoDB 7.0 local (2026-11-01); phiên bản trên Atlas chưa kiểm chứng. Seed (`systemRoles`) dùng `syncIndexes` nên tự bỏ index cũ `name_1` (unique toàn cục). Trước khi chạy seed, tên của role đã xoá vẫn bị giữ (lỗi `409 DUPLICATE_KEY`).
+- **Code mới truy vấn role** phải lọc role đã xoá: dùng `ACTIVE_ROLE` và `ROLE_ACCESS_POPULATE` từ `role.model.js`.
+- **Chưa có**: xoá vĩnh viễn role, API danh sách / chi tiết user, chuyển giao superAdmin, audit log (ai cấp quyền / khoá ai), quyền theo dữ liệu (vd "chỉ sửa bài của mình").
 - Chưa có test tự động. Các luồng trên (gồm migration từ dữ liệu cũ) đã kiểm tra thủ công bằng curl và mongosh ngày 2026-11-01.
