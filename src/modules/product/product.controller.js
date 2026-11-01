@@ -3,14 +3,15 @@ import { productService } from "./product.service.js";
 export const productController = {
   getAll: async (req, res) => {
     const items = await productService.getAll();
+    // * Danh sách rỗng không phải lỗi → 200, và return để không gửi response 2 lần.
     if (items.length === 0) {
-      res.status(400).json({
+      return res.status(200).json({
         success: true,
         message: "Chua co san pham nao!",
         data: [],
       });
     }
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Lay danh sach thanh cong!",
       data: items,

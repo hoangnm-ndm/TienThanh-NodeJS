@@ -6,7 +6,7 @@ export function notFoundError(req, res, next) {
     new AppError({
       statusCode: 404,
       code: ERROR_CODES.ROUTE_NOT_FOUND,
-      message: `Khong tim thay duong dan ${(req, method)}: ${req.orginalUrl}`,
+      message: `Không tìm thấy đường dẫn ${req.method}: ${req.originalUrl}`,
     }),
   );
 }
