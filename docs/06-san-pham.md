@@ -1,6 +1,6 @@
-# 05 — Sản phẩm (products)
+# 06 — Sản phẩm (products)
 
-Dùng khi làm việc với API sản phẩm. Ghi theo hiện trạng code ngày 2026-11-01. Trước: [04 — Xác thực](04-xac-thuc.md)
+Dùng khi làm việc với API sản phẩm. Ghi theo hiện trạng code ngày 2026-11-01. Trước: [05 — Người dùng & phân quyền](05-nguoi-dung.md)
 
 Code: `backend/src/modules/product/`.
 

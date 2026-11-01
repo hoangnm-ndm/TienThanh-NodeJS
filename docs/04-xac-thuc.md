@@ -1,8 +1,8 @@
 # 04 — Xác thực (auth)
 
-Dùng khi làm việc với đăng ký, đăng nhập, token, cookie, phân quyền. Trước: [03 — Quy ước code](03-quy-uoc-code.md) · Tiếp: [05 — Sản phẩm](05-san-pham.md)
+Dùng khi làm việc với đăng ký, đăng nhập, token, cookie, phân quyền. Trước: [03 — Quy ước code](03-quy-uoc-code.md) · Tiếp: [05 — Người dùng & phân quyền](05-nguoi-dung.md)
 
-Code: `backend/src/modules/auth/`, `backend/src/modules/session/`, `backend/src/shared/middlewares/{authenticate,checkRole}.js`, `backend/src/shared/utils/{jwt,hash,authCookies}.js`. Lý do chọn thiết kế: [ADR-002](06-quyet-dinh/ADR-002-cookie-auth-session-rotation.md).
+Code: `backend/src/modules/auth/`, `backend/src/modules/session/`, `backend/src/shared/middlewares/{authenticate,checkRole}.js`, `backend/src/shared/utils/{jwt,hash,authCookies}.js`. Lý do chọn thiết kế: [ADR-002](07-quyet-dinh/ADR-002-cookie-auth-session-rotation.md).
 
 ## Mô hình dữ liệu
 
@@ -81,7 +81,7 @@ Base: `/api/auth`. Body JSON. Format response và lỗi chung: [03 — Lỗi và
 | `POST /logout` | — | cookie `refreshToken` (không bắt buộc) | `200`, xoá 2 cookie | — (idempotent) |
 | `GET /me` | `authenticate` | cookie `accessToken` hoặc `Authorization: Bearer` | `200`, `data` = user | `401`, `403 ACCOUNT_BLOCKED` |
 
-`data` user: `{ id, email, role, language, isVerify, createdAt }`.
+`data` user: `{ id, email, role, language, isVerify, isBlocked, blockedAt, createdAt }` (mapper chung `backend/src/modules/user/user.mapper.js`).
 
 Rule validate (`auth.schema.js`):
 
@@ -118,7 +118,7 @@ router.post("/", authenticate, checkRole(ROLES.ADMIN, ROLES.SUPER_ADMIN), valida
 
 - Sai email và sai mật khẩu trả **cùng** thông báo, để không lộ email nào đã đăng ký.
 - Hai request refresh song song với cùng token: chỉ một cái thành công. `rotate` có điều kiện hash cũ, cái còn lại nhận `401 TOKEN_INVALID`. Client nên gom refresh về một request duy nhất.
-- User bị khoá: đăng nhập trả `403`, refresh thu hồi session và trả `403`.
+- User bị khoá: đăng nhập trả `403`. Lúc khoá, mọi session của user đã bị thu hồi nên refresh trả `401`. Luật ai được khoá ai: [05 — Người dùng & phân quyền](05-nguoi-dung.md).
 - Session hết hạn bị MongoDB xoá tự động (TTL index trên `expiresAt`; Mongo quét khoảng 60 giây một lần).
-- **Chưa có**: giới hạn số lần đăng nhập sai (rate limit), xác thực email, quên / đặt lại mật khẩu (`forgotPassword`, `resetPassword` là stub chưa gắn route), API danh sách thiết bị / đăng xuất thiết bị khác (đã có TODO trong `session.service.js`).
+- **Chưa có**: giới hạn số lần đăng nhập sai (rate limit), xác thực email, quên / đặt lại mật khẩu (`forgotPassword`, `resetPassword` là stub chưa gắn route), API danh sách thiết bị / đăng xuất thiết bị khác (`revokeAllByUser` đã có, còn TODO `listByUser` trong `session.service.js`).
 - Chưa có test tự động. Các luồng trên đã kiểm tra thủ công bằng curl ngày 2026-11-01.

@@ -33,6 +33,7 @@ Mở http://localhost:5173. API gọi qua `/api/...`.
 | `npm run build` | Build frontend |
 | `npm run lint` | Lint các workspace |
 | `npm run env:sync` | Đồng bộ biến từ `.env.example` sang `.env` |
+| `npm run db:seed` | Seed dữ liệu ban đầu (superAdmin từ env) |
 
 Danh sách lệnh và biến môi trường đầy đủ: [docs/01-chay-local.md](docs/01-chay-local.md).
 

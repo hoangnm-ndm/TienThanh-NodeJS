@@ -18,7 +18,7 @@ flowchart LR
 | `docs/` | Tài liệu dev | Markdown + Mermaid |
 | `scripts/` | Script dùng chung cho mọi workspace | Node.js thuần |
 
-Monorepo dùng **npm workspaces** ([ADR-001](06-quyet-dinh/ADR-001-monorepo-npm-workspaces.md)).
+Monorepo dùng **npm workspaces** ([ADR-001](07-quyet-dinh/ADR-001-monorepo-npm-workspaces.md)).
 
 **Ràng buộc**: trình duyệt chỉ gọi API qua đường dẫn tương đối `/api/...`. Lý do: cookie auth là httpOnly, `SameSite=Lax`. Gọi cùng origin (qua proxy Vite ở dev) thì cookie tự gửi kèm và không cần cấu hình CORS (backend hiện **không** bật CORS).
 
@@ -54,6 +54,7 @@ backend/
     │   ├── <tên>.controller.js
     │   ├── <tên>.service.js  #   business logic
     │   └── <tên>.model.js    #   Mongoose model
+    ├── seeds/                # npm run db:seed: index.js chạy lần lượt các *.seed.js
     └── shared/
         ├── constants/        # ROLES…
         ├── errors/           # AppError, ERROR_CODES, httpErrors, notFoundError
@@ -63,7 +64,7 @@ backend/
         └── logger.js         # pino
 ```
 
-Các module hiện có: `auth`, `user` (chỉ model), `session` (model + service, dùng bởi auth), `product`, `post` (chỉ model, chưa có route).
+Các module hiện có: `auth`, `user` (đổi role, khoá / mở khoá), `session` (model + service, dùng bởi auth), `product`, `post` (chỉ model, chưa có route).
 
 ## Muốn làm X → sửa ở đâu
 
@@ -75,6 +76,7 @@ Các module hiện có: `auth`, `user` (chỉ model), `session` (model + service
 | Thêm mã lỗi | `backend/src/shared/errors/errorCodes.js` |
 | Thêm / đổi biến môi trường | `.env.example` của workspace → `npm run env:sync` → `envConfig.js` (BE) hoặc `vite.config.js` (FE) → bảng ở [01](01-chay-local.md#biến-môi-trường) |
 | Đổi thời hạn token, cookie | Biến `JWT_*` · `backend/src/shared/utils/authCookies.js` |
-| Thêm role | `backend/src/shared/constants/roles.js` (User model đọc enum từ đây) |
+| Thêm role / đổi cấp bậc | `backend/src/shared/constants/roles.js` (`ROLES`, `ROLE_LEVEL`, `ASSIGNABLE_ROLES`; User model đọc enum từ đây) — luật: [05](05-nguoi-dung.md) |
+| Thêm dữ liệu seed | `backend/src/seeds/<tên>.seed.js` + mảng `SEEDERS` trong `backend/src/seeds/index.js` |
 | Đổi cổng / proxy dev | `PORT` (BE), `API_PROXY_TARGET`, `FRONTEND_PORT` (FE) |
 | Thêm script dùng chung cho BE + FE | `scripts/` + khai báo trong `package.json` gốc |

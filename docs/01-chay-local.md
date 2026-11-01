@@ -76,6 +76,7 @@ npm run dev
 | `npm run dev:backend` | Chỉ backend (`node --watch`, tự restart khi sửa file) |
 | `npm run dev:frontend` | Chỉ frontend (Vite) |
 | `npm start` | Chạy backend không watch |
+| `npm run db:seed` | Seed dữ liệu ban đầu (superAdmin) — [05 — Seed](05-nguoi-dung.md#tạo-superadmin-đầu-tiên-seed) |
 | `npm run build` | Build frontend ra `frontend/dist/` |
 | `npm run preview` | Xem bản build frontend |
 | `npm run lint` | Lint mọi workspace có script `lint` (hiện chỉ frontend — oxlint) |
@@ -102,6 +103,8 @@ Nguồn duy nhất của danh sách biến là `backend/.env.example` và `front
 | `JWT_REFRESH_SECRET` | ✔ | — | Secret ký refresh token, khác access secret |
 | `JWT_REFRESH_EXPIRES_IN` | | `7d` | Hạn refresh token = hạn session |
 | `COOKIE_DOMAIN` | | domain hiện tại | Domain gắn cho cookie auth |
+| `SEED_SUPER_ADMIN_EMAIL` | | — (trống = bỏ qua) | Email superAdmin cho `npm run db:seed` |
+| `SEED_SUPER_ADMIN_PASSWORD` | khi seed tạo user mới | — | Mật khẩu superAdmin, theo rule mật khẩu đăng ký |
 
 Thiếu biến bắt buộc → backend in `[envConfig] Biến môi trường bắt buộc chưa điền: …` rồi thoát.
 
