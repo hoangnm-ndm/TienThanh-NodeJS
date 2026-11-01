@@ -1,25 +1,29 @@
-export const ROLES = Object.freeze({
-  SUPER_ADMIN: "superAdmin",
+import { PERMISSIONS } from "./permissions.js";
+
+// * Role hệ thống: tạo bởi npm run db:seed, không đổi tên / không xoá được.
+// * Role khác do người dùng tạo qua API /api/roles.
+export const SYSTEM_ROLES = Object.freeze({
   ADMIN: "admin",
-  MEMBER: "member",
+  MEMBER: "member", // * role mặc định khi đăng ký
 });
 
-// * Cấp bậc role: số lớn hơn = quyền cao hơn.
-export const ROLE_LEVEL = Object.freeze({
-  [ROLES.MEMBER]: 1,
-  [ROLES.ADMIN]: 2,
-  [ROLES.SUPER_ADMIN]: 3,
-});
+// * Giá trị seed ban đầu (chỉ dùng khi role chưa tồn tại — sau đó permission chỉnh qua API).
+export const SYSTEM_ROLE_DEFAULTS = Object.freeze([
+  {
+    name: SYSTEM_ROLES.ADMIN,
+    description: "Quản trị viên",
+    level: 50,
+    permissions: Object.values(PERMISSIONS),
+  },
+  {
+    name: SYSTEM_ROLES.MEMBER,
+    description: "Thành viên (mặc định khi đăng ký)",
+    level: 1,
+    permissions: [],
+  },
+]);
 
-// * actorRole có cấp cao hơn hẳn targetRole không (bằng cấp → false).
-export function isHigherRole(actorRole, targetRole) {
-  return (ROLE_LEVEL[actorRole] ?? 0) > (ROLE_LEVEL[targetRole] ?? 0);
-}
-
-// * Các role thấp hơn hẳn role cho trước, vd rolesBelow("admin") → ["member"].
-export function rolesBelow(role) {
-  return Object.values(ROLES).filter((r) => isHigherRole(role, r));
-}
-
-// * Role superAdmin được phép gán cho người khác (không gồm superAdmin: hệ thống chỉ có 1).
-export const ASSIGNABLE_ROLES = Object.freeze([ROLES.ADMIN, ROLES.MEMBER]);
+// * Level của role: số nguyên, lớn hơn = cấp cao hơn. superAdmin coi như vô hạn.
+export const ROLE_LEVEL_MIN = 1;
+export const ROLE_LEVEL_MAX = 1000;
+export const SUPER_ADMIN_LEVEL = Number.POSITIVE_INFINITY;

@@ -1,5 +1,7 @@
 import { User } from "../user/user.model.js";
 import { toPublicUser } from "../user/user.mapper.js";
+import { ROLE_ACCESS_FIELDS } from "../role/role.model.js";
+import { roleService } from "../role/role.service.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
 import { ERROR_CODES } from "../../shared/errors/errorCodes.js";
@@ -8,6 +10,7 @@ import {
   hashPassword,
   hashToken,
 } from "../../shared/utils/hash.js";
+import { buildAccessContext } from "../../shared/utils/accessControl.js";
 import {
   signAccessToken,
   signRefreshToken,
@@ -24,7 +27,7 @@ function assertNotBlocked(user) {
 
 function signTokenPair({ user, sessionId }) {
   return {
-    accessToken: signAccessToken({ userId: user._id, role: user.role }),
+    accessToken: signAccessToken({ userId: user._id }),
     refreshToken: signRefreshToken({ userId: user._id, sessionId }),
   };
 }
@@ -44,17 +47,23 @@ export const authService = {
         ERROR_CODES.EMAIL_ALREADY_REGISTERED,
       );
 
+    // * User mới nhận role mặc định (member).
+    const defaultRole = await roleService.getDefaultRole();
     const newUser = await User.create({
       email,
       password: await hashPassword(password),
+      roles: [defaultRole._id],
     });
+    await newUser.populate("roles", ROLE_ACCESS_FIELDS);
     // TODO: service mail (verify email)
     return toPublicUser(newUser);
   },
 
   // * context = { userAgent, ip } — lưu theo session để sau này quản lý thiết bị.
   login: async ({ email, password }, context) => {
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email })
+      .select("+password")
+      .populate("roles", ROLE_ACCESS_FIELDS);
 
     // * Cùng 1 thông báo cho "sai email" và "sai mật khẩu" → không lộ email nào đã đăng ký.
     const isMatch =
@@ -75,7 +84,7 @@ export const authService = {
       ...context,
     });
 
-    return { user: toPublicUser(user), ...tokens };
+    return { user: toPublicUser(user, buildAccessContext(user)), ...tokens };
   },
 
   // * Refresh token rotation: cấp cặp token mới, token cũ hết hiệu lực ngay.
@@ -127,9 +136,10 @@ export const authService = {
     }
   },
 
+  // * Kèm level + permissions để frontend ẩn / hiện chức năng (server vẫn kiểm tra thật).
   getMe: async (userId) => {
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).populate("roles", ROLE_ACCESS_FIELDS);
     if (!user) throw httpErrors.notFound("Không tìm thấy người dùng");
-    return toPublicUser(user);
+    return toPublicUser(user, buildAccessContext(user));
   },
 };

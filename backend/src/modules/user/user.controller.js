@@ -3,11 +3,11 @@ import { sendSuccess } from "../../shared/utils/response.js";
 
 // * Thao tác không đổi gì (đã khoá rồi, role giữ nguyên…) vẫn trả 200 → idempotent.
 export const userController = {
-  updateRole: async (req, res) => {
-    const { user, changed } = await userService.updateRole(
+  assignRoles: async (req, res) => {
+    const { user, changed } = await userService.assignRoles(
       req.user,
       req.validated.params.id,
-      req.validated.body.role,
+      req.validated.body.roleIds,
     );
     return sendSuccess(res, {
       message: changed ? "Cập nhật role thành công" : "Role không thay đổi",

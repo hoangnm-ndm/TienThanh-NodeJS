@@ -2,7 +2,6 @@ import { z } from "zod";
 import { User } from "../modules/user/user.model.js";
 import { envConfig } from "../config/envConfig.js";
 import { emailField, newPasswordField } from "../modules/auth/auth.schema.js";
-import { ROLES } from "../shared/constants/roles.js";
 import { hashPassword } from "../shared/utils/hash.js";
 
 const envSchema = z.object({
@@ -31,7 +30,7 @@ export async function seedSuperAdmin() {
   // * Đảm bảo unique index "1 superAdmin" đã tạo trước khi ghi.
   await User.init();
 
-  const existing = await User.findOne({ role: ROLES.SUPER_ADMIN });
+  const existing = await User.findOne({ isSuperAdmin: true });
   if (existing)
     return existing.email === email
       ? `superAdmin ${email} đã tồn tại, không thay đổi`
@@ -39,7 +38,7 @@ export async function seedSuperAdmin() {
 
   const user = await User.findOne({ email });
   if (user) {
-    user.role = ROLES.SUPER_ADMIN;
+    user.isSuperAdmin = true;
     user.isBlocked = null;
     await user.save();
     return `Đã nâng ${email} lên superAdmin (giữ nguyên mật khẩu)`;
@@ -53,7 +52,7 @@ export async function seedSuperAdmin() {
   await User.create({
     email,
     password: await hashPassword(password),
-    role: ROLES.SUPER_ADMIN,
+    isSuperAdmin: true,
     isVerify: true,
   });
   return `Đã tạo superAdmin ${email}`;

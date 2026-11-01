@@ -1,15 +1,16 @@
 import { User } from "./user.model.js";
 import { toPublicUser } from "./user.mapper.js";
+import { Role, ROLE_ACCESS_FIELDS } from "../role/role.model.js";
 import { sessionService } from "../session/session.service.js";
 import { httpErrors } from "../../shared/errors/httpErrors.js";
 import { ERROR_CODES } from "../../shared/errors/errorCodes.js";
 import {
-  ROLES,
-  isHigherRole,
-  rolesBelow,
-} from "../../shared/constants/roles.js";
+  assertCanGrant,
+  assertLevelBelow,
+  buildAccessContext,
+} from "../../shared/utils/accessControl.js";
 
-// * actor = req.user ({ id, email, role }) — người thực hiện thao tác.
+// * actor = req.user ({ id, email, access }) — người thực hiện thao tác.
 
 function assertNotSelf(actor, targetId, action) {
   if (actor.id === String(targetId))
@@ -20,49 +21,72 @@ function assertNotSelf(actor, targetId, action) {
 }
 
 async function findTargetOrThrow(targetId) {
-  const target = await User.findById(targetId);
+  const target = await User.findById(targetId).populate("roles", ROLE_ACCESS_FIELDS);
   if (!target)
-    throw httpErrors.notFound(
-      "Không tìm thấy người dùng",
-      ERROR_CODES.USER_NOT_FOUND,
-    );
+    throw httpErrors.notFound("Không tìm thấy người dùng", ERROR_CODES.USER_NOT_FOUND);
   return target;
 }
 
-// * Chỉ tác động lên người có cấp thấp hơn → superAdmin (cấp cao nhất) không bao giờ bị khoá.
+// * Chỉ tác động lên người có cấp thấp hơn hẳn → superAdmin (cấp vô hạn) không ai tác động được.
 function assertCanManage(actor, target) {
-  if (!isHigherRole(actor.role, target.role))
-    throw httpErrors.forbidden(
-      "Chỉ được thao tác với tài khoản có cấp thấp hơn bạn",
-      ERROR_CODES.TARGET_ROLE_NOT_ALLOWED,
-    );
+  assertLevelBelow(
+    actor.access,
+    buildAccessContext(target).level,
+    "Chỉ được thao tác với người dùng có cấp thấp hơn bạn",
+  );
 }
 
-// * Cập nhật có điều kiện role của target vẫn thấp hơn actor (chặn race: target vừa được nâng role).
-async function updateManagedUser(actor, target, update) {
+// * Ghi có điều kiện: roles của target chưa đổi kể từ lúc kiểm tra quyền (chặn race).
+async function updateIfRolesUnchanged(target, update) {
+  const originalRoleIds = target.populated("roles") ?? [];
   const updated = await User.findOneAndUpdate(
-    { _id: target._id, role: { $in: rolesBelow(actor.role) } },
+    { _id: target._id, isSuperAdmin: false, roles: originalRoleIds },
     update,
     { returnDocument: "after" },
-  );
-  if (!updated) {
-    assertCanManage(actor, await findTargetOrThrow(target._id));
-    throw httpErrors.conflict("Dữ liệu vừa thay đổi, vui lòng thử lại");
-  }
+  ).populate("roles", ROLE_ACCESS_FIELDS);
+  if (!updated) throw httpErrors.conflict("Người dùng vừa thay đổi, vui lòng thử lại");
   return updated;
 }
 
+const sameIdSet = (a, b) =>
+  a.length === b.length && a.every((id) => b.includes(id));
+
 export const userService = {
-  // * Chỉ superAdmin (route đã checkRole); role mới chỉ admin | member (schema đã chặn superAdmin).
-  updateRole: async (actor, targetId, role) => {
-    if (actor.role !== ROLES.SUPER_ADMIN) throw httpErrors.forbidden();
-    assertNotSelf(actor, targetId, "đổi role của");
+  assignRoles: async (actor, targetId, roleIds) => {
+    assertNotSelf(actor, targetId, "gán role cho");
 
     const target = await findTargetOrThrow(targetId);
     assertCanManage(actor, target);
-    if (target.role === role) return { user: toPublicUser(target), changed: false };
 
-    const updated = await updateManagedUser(actor, target, { role });
+    const roles = await Role.find({ _id: { $in: roleIds } });
+    if (roles.length !== roleIds.length) {
+      const found = new Set(roles.map((role) => String(role._id)));
+      throw httpErrors.notFound(
+        `Không tìm thấy role: ${roleIds.filter((id) => !found.has(id)).join(", ")}`,
+        ERROR_CODES.ROLE_NOT_FOUND,
+      );
+    }
+
+    // * Chỉ gán được role có level thấp hơn mình.
+    for (const role of roles)
+      assertLevelBelow(
+        actor.access,
+        role.level,
+        `Không thể gán role "${role.name}": level phải thấp hơn level của bạn`,
+        ERROR_CODES.ROLE_LEVEL_NOT_ALLOWED,
+      );
+
+    const currentIds = target.roles.map((role) => String(role._id));
+    if (sameIdSet(currentIds, roleIds))
+      return { user: toPublicUser(target), changed: false };
+
+    // * Role mới thêm không được mang permission mà mình không có (chống cấp quyền vượt mình).
+    assertCanGrant(
+      actor.access,
+      roles.filter((role) => !currentIds.includes(String(role._id))).flatMap((role) => role.permissions),
+    );
+
+    const updated = await updateIfRolesUnchanged(target, { roles: roleIds });
     return { user: toPublicUser(updated), changed: true };
   },
 
@@ -73,9 +97,7 @@ export const userService = {
     assertCanManage(actor, target);
     if (target.isBlocked) return { user: toPublicUser(target), changed: false };
 
-    const updated = await updateManagedUser(actor, target, {
-      isBlocked: new Date(),
-    });
+    const updated = await updateIfRolesUnchanged(target, { isBlocked: new Date() });
     // * Thu hồi mọi phiên → không refresh được nữa; access token còn hạn cũng bị authenticate chặn (403).
     await sessionService.revokeAllByUser(target._id);
     return { user: toPublicUser(updated), changed: true };
@@ -88,7 +110,7 @@ export const userService = {
     assertCanManage(actor, target);
     if (!target.isBlocked) return { user: toPublicUser(target), changed: false };
 
-    const updated = await updateManagedUser(actor, target, { isBlocked: null });
+    const updated = await updateIfRolesUnchanged(target, { isBlocked: null });
     return { user: toPublicUser(updated), changed: true };
   },
 };

@@ -2,9 +2,17 @@
 // * Thêm seeder mới: tạo src/seeds/<tên>.seed.js export hàm async, rồi thêm vào SEEDERS (theo thứ tự phụ thuộc).
 import mongoose from "mongoose";
 import { envConfig } from "../config/envConfig.js";
+import { seedSystemRoles } from "./systemRoles.seed.js";
+import { migrateLegacyRoles } from "./migrateLegacyRoles.seed.js";
 import { seedSuperAdmin } from "./superAdmin.seed.js";
 
-const SEEDERS = [{ name: "superAdmin", run: seedSuperAdmin }];
+// * Thứ tự: role hệ thống → chuyển dữ liệu role cũ (cần role hệ thống) → superAdmin (sau migration
+//   để không tạo superAdmin thứ 2 khi dữ liệu cũ còn role: "superAdmin").
+const SEEDERS = [
+  { name: "systemRoles", run: seedSystemRoles },
+  { name: "migrateLegacyRoles", run: migrateLegacyRoles },
+  { name: "superAdmin", run: seedSuperAdmin },
+];
 
 try {
   await mongoose.connect(envConfig.DB_URI);

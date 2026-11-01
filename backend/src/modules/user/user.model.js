@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { schemaOptions } from "../../config/schemaOptions.js";
-import { ROLES } from "../../shared/constants/roles.js";
+// * Đăng ký model Role trước để populate("roles") luôn chạy được.
+import "../role/role.model.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -21,10 +22,16 @@ const userSchema = new mongoose.Schema(
       enum: ["en", "vi", "jp"],
       default: "en",
     },
-    role: {
-      type: String,
-      enum: Object.values(ROLES),
-      default: ROLES.MEMBER,
+    // * 1 user nhiều role; quyền thực tế = hợp permission của các role.
+    roles: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Role" }],
+      default: [],
+      index: true,
+    },
+    // * Chủ hệ thống: bỏ qua mọi kiểm tra permission, không nằm trong bảng roles.
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
     },
     isVerify: {
       type: Boolean,
@@ -39,10 +46,10 @@ const userSchema = new mongoose.Schema(
   schemaOptions,
 );
 
-// * Chỉ cho phép 1 superAdmin: unique index chỉ áp lên document có role = superAdmin.
+// * Chỉ cho phép 1 superAdmin: unique index chỉ áp lên document có isSuperAdmin = true.
 userSchema.index(
-  { role: 1 },
-  { unique: true, partialFilterExpression: { role: ROLES.SUPER_ADMIN } },
+  { isSuperAdmin: 1 },
+  { unique: true, partialFilterExpression: { isSuperAdmin: true } },
 );
 
 export const User = mongoose.model("User", userSchema);

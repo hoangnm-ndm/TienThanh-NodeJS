@@ -1,17 +1,16 @@
 import { z } from "zod";
-import { ASSIGNABLE_ROLES } from "../../shared/constants/roles.js";
+import { objectIdField } from "../../shared/utils/validators.js";
 
 export const userIdParamsSchema = z.object({
-  id: z
-    .string()
-    .regex(/^[0-9a-fA-F]{24}$/, "Id người dùng không hợp lệ"),
+  id: objectIdField("Id người dùng không hợp lệ"),
 });
 
-// * Không cho gán superAdmin: hệ thống chỉ có đúng 1 superAdmin.
-export const updateRoleSchema = z
+// * Thay toàn bộ danh sách role của user (mảng rỗng = gỡ hết role).
+export const assignRolesSchema = z
   .object({
-    role: z.enum(ASSIGNABLE_ROLES, {
-      error: `Role chỉ được là: ${ASSIGNABLE_ROLES.join(", ")}`,
-    }),
+    roleIds: z
+      .array(objectIdField("Id role không hợp lệ"), { error: "roleIds phải là mảng id role" })
+      .max(20, "Tối đa 20 role")
+      .transform((ids) => [...new Set(ids)]),
   })
   .strict();

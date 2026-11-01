@@ -1,33 +1,33 @@
 import { Router } from "express";
 import { userController } from "./user.controller.js";
-import { userIdParamsSchema, updateRoleSchema } from "./user.schema.js";
+import { assignRolesSchema, userIdParamsSchema } from "./user.schema.js";
 import { validate } from "../../shared/middlewares/validate.js";
 import { authenticate } from "../../shared/middlewares/authenticate.js";
-import { checkRole } from "../../shared/middlewares/checkRole.js";
-import { ROLES } from "../../shared/constants/roles.js";
+import { authorize } from "../../shared/middlewares/authorize.js";
+import { PERMISSIONS } from "../../shared/constants/permissions.js";
 
 export const userRoutes = Router();
 
 // * Mọi route quản lý user đều cần đăng nhập.
 userRoutes.use(authenticate);
 
-userRoutes.patch(
-  "/:id/role",
-  checkRole(ROLES.SUPER_ADMIN),
-  validate({ params: userIdParamsSchema, body: updateRoleSchema }),
-  userController.updateRole,
+userRoutes.put(
+  "/:id/roles",
+  authorize(PERMISSIONS.USER_ASSIGN_ROLE),
+  validate({ params: userIdParamsSchema, body: assignRolesSchema }),
+  userController.assignRoles,
 );
 
 userRoutes.patch(
   "/:id/block",
-  checkRole(ROLES.ADMIN, ROLES.SUPER_ADMIN),
+  authorize(PERMISSIONS.USER_BLOCK),
   validate({ params: userIdParamsSchema }),
   userController.block,
 );
 
 userRoutes.patch(
   "/:id/unblock",
-  checkRole(ROLES.ADMIN, ROLES.SUPER_ADMIN),
+  authorize(PERMISSIONS.USER_BLOCK),
   validate({ params: userIdParamsSchema }),
   userController.unblock,
 );

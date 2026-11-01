@@ -2,9 +2,10 @@ import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { envConfig } from "../../config/envConfig.js";
 
-// * Access token: payload { sub: userId, role } — sống ngắn, gửi kèm mọi request.
-export function signAccessToken({ userId, role }) {
-  return jwt.sign({ role }, envConfig.JWT_ACCESS_SECRET, {
+// * Access token: payload { sub: userId } — sống ngắn, gửi kèm mọi request.
+// * Không chứa role / permission: authenticate đọc quyền mới nhất từ DB.
+export function signAccessToken({ userId }) {
+  return jwt.sign({}, envConfig.JWT_ACCESS_SECRET, {
     subject: String(userId),
     expiresIn: envConfig.JWT_ACCESS_EXPIRES_IN,
   });
